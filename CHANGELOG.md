@@ -42,6 +42,9 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **⌘= / ⌘- / ⌘0 always zoom the board**, wherever focus is on the page —
+  the browser's own zoom never fires. A field that isn't the board's keeps
+  its keys.
 - **Double-click picks the word.** Double-clicking text opens it for editing
   with the word under the pointer selected (just the caret, on whitespace);
   a third quick click selects everything. Enter still selects all.

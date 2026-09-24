@@ -2010,3 +2010,47 @@ describe('double and triple click into text', () => {
     editor._commitText()
   })
 })
+
+describe('page-wide zoom keys', () => {
+  const key = (k, over = {}) => {
+    const e = new KeyboardEvent('keydown', { key: k, metaKey: true, bubbles: true, cancelable: true, ...over })
+    ;(over.target || document.body).dispatchEvent(e)
+    return e
+  }
+
+  it('⌘= / ⌘- / ⌘0 zoom the board from anywhere on the page, and never reach the browser', () => {
+    // the zoom animates over frames, so watch the calls rather than the camera
+    const spy = vi.spyOn(editor, 'zoomAt')
+    expect(key('=').defaultPrevented).toBe(true)
+    expect(spy).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), 1.25, { animate: 140 })
+    key('-')
+    expect(spy).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), 1 / 1.25, { animate: 140 })
+    key('+')
+    expect(spy).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), 1.25, { animate: 140 })
+    const reset = vi.spyOn(editor, 'resetZoom')
+    key('0')
+    expect(reset).toHaveBeenCalled()
+    // plain keys and other combos are left alone
+    expect(key('=', { metaKey: false }).defaultPrevented).toBe(false)
+    expect(key('=', { altKey: true }).defaultPrevented).toBe(false)
+  })
+
+  it("a field that isn't the board's keeps its keys", () => {
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+    const spy = vi.spyOn(editor, 'zoomAt')
+    const e = key('=', { target: input })
+    expect(e.defaultPrevented).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
+    input.remove()
+    // but the board's own text surface doesn't block them
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'x', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.setTool('select')
+    editor.editShapeText('t')
+    const e2 = key('=', { target: editor.editing.textarea.el })
+    expect(e2.defaultPrevented).toBe(true)
+    expect(spy).toHaveBeenCalled()
+    editor._commitText()
+  })
+})
