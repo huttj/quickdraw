@@ -126,22 +126,79 @@ export function lineBaseline(font, fontSize, lh) {
 }
 
 // ---- text layout -----------------------------------------------------------
+// Text can carry marks: runs of { from, to } character offsets with any of
+// b (bold), i (italic), u (underline), s (strike), code, hl (highlight) and
+// href (a link). Bold, italic and code change how a run measures, so the
+// wrapping knows about them; the rest only change how it's drawn. Marks
+// live on props.marks for text and notes, props.labelMarks for geo labels.
 
-function wrapLines(text, font, fontSize, maxW) {
-  const ctx = measurer()
-  ctx.font = `500 ${fontSize}px ${font}`
+// a run's font
+export const runFont = (st, fontSize, font) =>
+  `${st.i ? 'italic ' : ''}${st.b ? 700 : 500} ${fontSize}px ${st.code ? FONTS.mono : font}`
+
+// the runs covering [from, to) of a text: [start, end, style] — unmarked
+// stretches get an empty style
+export function runsIn(marks, from, to) {
+  if (!marks || !marks.length) return [[from, to, {}]]
   const out = []
-  for (const para of String(text ?? '').split('\n')) {
-    if (para === '') { out.push({ text: '', w: 0 }); continue }
-    let line = ''
+  let pos = from
+  for (const m of marks) {
+    if (m.to <= from || m.from >= to) continue
+    const s = Math.max(m.from, from), e = Math.min(m.to, to)
+    if (s > pos) out.push([pos, s, {}])
+    if (e > s) out.push([s, e, m])
+    pos = Math.max(pos, e)
+  }
+  if (pos < to) out.push([pos, to, {}])
+  return out
+}
+const measureSpan = (ctx, text, from, to, marks, fontSize, font) => {
+  let w = 0
+  for (const [s, e, st] of runsIn(marks, from, to)) {
+    ctx.font = runFont(st, fontSize, font)
+    w += ctx.measureText(text.slice(s, e)).width
+  }
+  return w
+}
+
+// lines as { text, w, start }: `start` is the line's offset in the full
+// text, so marks can be sliced per line
+function wrapLines(text, font, fontSize, maxW, marks) {
+  const ctx = measurer()
+  const str = String(text ?? '')
+  const out = []
+  let pos = 0
+  for (const para of str.split('\n')) {
+    if (para === '') { out.push({ text: '', w: 0, start: pos }); pos += 1; continue }
+    let line = '', lineStart = pos, cur = pos
     for (const word of para.split(/(\s+)/)) {
+      if (!word) continue
       const test = line + word
-      if (line && maxW && ctx.measureText(test).width > maxW) {
-        out.push({ text: line, w: ctx.measureText(line).width })
-        line = word.trimStart()
+      if (line && maxW && measureSpan(ctx, str, lineStart, cur + word.length, marks, fontSize, font) > maxW) {
+        out.push({ text: line, w: measureSpan(ctx, str, lineStart, cur, marks, fontSize, font), start: lineStart })
+        const trimmed = word.trimStart()
+        lineStart = cur + (word.length - trimmed.length)
+        line = trimmed
       } else line = test
+      cur += word.length
     }
-    out.push({ text: line, w: ctx.measureText(line).width })
+    out.push({ text: line, w: measureSpan(ctx, str, lineStart, cur, marks, fontSize, font), start: lineStart })
+    pos += para.length + 1
+  }
+  return out
+}
+
+// one line's runs with their widths: [{ str, st, x, w }], x from the line's left
+export function lineRuns(text, line, marks, fontSize, font) {
+  const ctx = measurer()
+  const out = []
+  let x = 0
+  for (const [s, e, st] of runsIn(marks, line.start, line.start + line.text.length)) {
+    ctx.font = runFont(st, fontSize, font)
+    const str = String(text ?? '').slice(s, e)
+    const w = ctx.measureText(str).width
+    out.push({ str, st, x, w })
+    x += w
   }
   return out
 }
@@ -154,7 +211,7 @@ export function textLayout(shape) {
   const font = FONTS[p.font || 'draw']
   const lh = fontSize * 1.32
   const maxW = p.autosize === false && p.w ? p.w : 0
-  const lines = wrapLines(p.text, font, fontSize, maxW)
+  const lines = wrapLines(p.text, font, fontSize, maxW, p.marks)
   const w = maxW || Math.max(8, ...lines.map((l) => l.w)) + 2
   const l = { lines, fontSize, font, lh, w, h: Math.max(lh, lines.length * lh) }
   layoutCache.set(p, l)
@@ -168,7 +225,7 @@ export function noteLayout(shape) {
   const fontSize = NOTE_FONT_SIZES[p.size]
   const font = FONTS[p.font || 'draw']
   const lh = fontSize * 1.35
-  const lines = wrapLines(p.text, font, fontSize, NOTE_W - NOTE_PAD * 2)
+  const lines = wrapLines(p.text, font, fontSize, NOTE_W - NOTE_PAD * 2, p.marks)
   const textH = lines.length * lh
   const l = { lines, fontSize, font, lh, textH, boxH: Math.max(NOTE_W, textH + NOTE_PAD * 2) }
   layoutCache.set(p, l)
@@ -184,10 +241,75 @@ export function geoLabelLayout(shape) {
   const fontSize = FONT_SIZES[p.labelSize || 's']
   const font = FONTS[p.font || 'draw']
   const lh = fontSize * 1.3
-  const lines = wrapLines(p.label, font, fontSize, Math.max(24, p.w - LABEL_PAD * 2))
+  const lines = wrapLines(p.label, font, fontSize, Math.max(24, p.w - LABEL_PAD * 2), p.labelMarks)
   hit = { lines, fontSize, font, lh, textH: lines.length * lh }
   layoutCache.set(key, hit)
   return hit
+}
+
+// Carry marks across an edit of their text. Edits are local — a stretch of
+// the old text became a stretch of the new — so positions before it stay,
+// positions after it shift, and positions inside it collapse to its start.
+// A boundary right at the edit counts as "after": typing at the end of a
+// bold run extends it, typing at its start doesn't (the editors' rule).
+// Runs left empty go.
+export function mapMarks(marks, oldText, newText) {
+  if (!marks || !marks.length) return marks
+  const o = String(oldText ?? ''), n = String(newText ?? '')
+  let a = 0
+  while (a < o.length && a < n.length && o[a] === n[a]) a++
+  let k = 0
+  while (k < o.length - a && k < n.length - a && o[o.length - 1 - k] === n[n.length - 1 - k]) k++
+  const b = o.length - k
+  const delta = n.length - o.length
+  const map = (pos) => (pos < a ? pos : pos >= b ? pos + delta : a)
+  return marks.map((m) => ({ ...m, from: map(m.from), to: map(m.to) })).filter((m) => m.to > m.from)
+}
+
+// where the text of a text/note/geo shape sits in its local frame:
+// { lines, fontSize, font, lh, top, marks, text, left(line), scale }
+function textBlock(shape) {
+  const p = shape.props
+  if (shape.type === 'text') {
+    const l = textLayout(shape)
+    const align = p.align || 'start'
+    return { ...l, top: 0, marks: p.marks, text: p.text, scale: 1,
+      left: (line) => (align === 'middle' ? l.w / 2 - line.w / 2 : align === 'end' ? l.w - line.w : 0) }
+  }
+  if (shape.type === 'note') {
+    const l = noteLayout(shape)
+    return { ...l, top: Math.max(NOTE_PAD, l.boxH / 2 - l.textH / 2), marks: p.marks, text: p.text, scale: p.scale || 1,
+      left: (line) => NOTE_W / 2 - line.w / 2 }
+  }
+  if (shape.type === 'geo') {
+    const l = geoLabelLayout(shape)
+    if (!l) return null
+    return { ...l, top: p.h / 2 - l.textH / 2, marks: p.labelMarks, text: p.label, scale: 1, left: (line) => p.w / 2 - line.w / 2 }
+  }
+  return null
+}
+
+// the link under a shape-local point, or null
+export function textLinkAt(shape, lx, ly) {
+  const tb = textBlock(shape)
+  if (!tb || !tb.marks?.some((m) => m.href)) return null
+  const x = lx / tb.scale, y = ly / tb.scale
+  const line = tb.lines[Math.floor((y - tb.top) / tb.lh)]
+  if (!line || y < tb.top) return null
+  const x0 = tb.left(line)
+  for (const r of lineRuns(tb.text, line, tb.marks, tb.fontSize, tb.font)) {
+    if (r.st.href && x >= x0 + r.x && x <= x0 + r.x + r.w) return r.st.href
+  }
+  return null
+}
+
+// the link badge a shape with a url wears at its top-right corner: local
+// centre and radius
+export const URL_BADGE = 9
+export function urlBadgeAt(shape) {
+  if (!shape.props.url) return null
+  const lb = localBounds(shape)
+  return { x: lb.x + lb.w - URL_BADGE - 3, y: lb.y + URL_BADGE + 3, r: URL_BADGE }
 }
 
 // ---- image crop ------------------------------------------------------------
@@ -217,6 +339,16 @@ export function assetImage(store, assetId, onReady) {
   e = { img, ready: false }
   imgCache.set(assetId, e)
   img.onload = () => { e.ready = true; onReady && onReady() }
+  // a picture hosted elsewhere (a tldraw paste that couldn't be fetched)
+  // loads with CORS so export can still read the canvas; a host that won't
+  // allow that gets a plain load, which shows but can't be exported
+  const remote = /^https?:/i.test(asset.src)
+  if (remote) img.crossOrigin = 'anonymous'
+  img.onerror = () => {
+    if (!remote || img.crossOrigin == null) return
+    img.crossOrigin = null
+    img.src = asset.src
+  }
   img.src = asset.src
   return null
 }
@@ -317,17 +449,58 @@ function fillPath(ctx, path, p, theme) {
   ctx.fill(path)
 }
 
-function drawLabel(ctx, layout, color, w, h) {
-  if (!layout) return
-  ctx.font = `500 ${layout.fontSize}px ${layout.font}`
-  ctx.fillStyle = color
-  ctx.textAlign = 'center'
+// Draw laid-out lines, run by run: bold / italic / code change the font,
+// highlight paints a band behind, links and underlines rule under, strike
+// rules through. `left(line)` gives each line's left edge (alignment).
+function drawTextLines(ctx, theme, tb, color, top) {
+  const bl = lineBaseline(tb.font, tb.fontSize, tb.lh)
+  ctx.textAlign = 'left'
   ctx.textBaseline = 'alphabetic'
-  let y = h / 2 - layout.textH / 2 + lineBaseline(layout.font, layout.fontSize, layout.lh)
-  for (const line of layout.lines) {
-    ctx.fillText(line.text, w / 2, y)
-    y += layout.lh
+  const rule = Math.max(1, tb.fontSize / 16)
+  let y = top + bl
+  for (const line of tb.lines) {
+    const x0 = tb.left(line)
+    for (const r of lineRuns(tb.text, line, tb.marks, tb.fontSize, tb.font)) {
+      ctx.font = runFont(r.st, tb.fontSize, tb.font)
+      if (r.st.hl) {
+        ctx.fillStyle = theme.colors.yellow.note
+        ctx.fillRect(x0 + r.x - 1, y - bl, r.w + 2, tb.lh)
+      }
+      ctx.fillStyle = color
+      ctx.fillText(r.str, x0 + r.x, y)
+      if (r.st.href || r.st.u) ctx.fillRect(x0 + r.x, y + tb.fontSize * 0.12, r.w, rule)
+      if (r.st.s) ctx.fillRect(x0 + r.x, y - tb.fontSize * 0.3, r.w, rule)
+    }
+    y += tb.lh
   }
+}
+function drawLabel(ctx, theme, shape, color) {
+  const tb = textBlock(shape)
+  if (tb) drawTextLines(ctx, theme, tb, color, tb.top)
+}
+// the link badge: a small disc with an arrow, at the shape's top-right
+function drawUrlBadge(ctx, theme, shape, color) {
+  const b = urlBadgeAt(shape)
+  if (!b) return
+  ctx.save()
+  ctx.setLineDash([])
+  ctx.beginPath()
+  ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2)
+  ctx.fillStyle = theme.handleFill
+  ctx.fill()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(b.x - 3.5, b.y + 3.5)
+  ctx.lineTo(b.x + 3.5, b.y - 3.5)
+  ctx.moveTo(b.x - 1, b.y - 3.5)
+  ctx.lineTo(b.x + 3.5, b.y - 3.5)
+  ctx.lineTo(b.x + 3.5, b.y + 1)
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.stroke()
+  ctx.restore()
 }
 
 // the freehand outline as a Path2D, cached; live strokes (done !== true)
@@ -412,7 +585,7 @@ export function drawShape(ctx, shape, opts) {
       strokeStyled(ctx, p.dash, SIZES[p.size])
       ctx.stroke(path)
       ctx.setLineDash([])
-      if (opts.hideText !== 'label') drawLabel(ctx, geoLabelLayout(shape), col.stroke, p.w, p.h)
+      if (opts.hideText !== 'label') drawLabel(ctx, theme, shape, col.stroke)
       break
     }
     case 'arrow':
@@ -447,20 +620,7 @@ export function drawShape(ctx, shape, opts) {
       break
     }
     case 'text': {
-      const l = textLayout(shape)
-      ctx.font = `500 ${l.fontSize}px ${l.font}`
-      ctx.fillStyle = col.stroke
-      ctx.textBaseline = 'alphabetic'
-      const align = p.align || 'start'
-      ctx.textAlign = align === 'middle' ? 'center' : align === 'end' ? 'right' : 'left'
-      const ax = align === 'middle' ? l.w / 2 : align === 'end' ? l.w : 0
-      let y = lineBaseline(l.font, l.fontSize, l.lh)
-      if (opts.hideText !== 'text') {
-        for (const line of l.lines) {
-          ctx.fillText(line.text, ax, y)
-          y += l.lh
-        }
-      }
+      if (opts.hideText !== 'text') drawLabel(ctx, theme, shape, col.stroke)
       break
     }
     case 'note': {
@@ -477,18 +637,7 @@ export function drawShape(ctx, shape, opts) {
       ctx.shadowColor = 'transparent'
       ctx.shadowBlur = 0
       ctx.shadowOffsetY = 0
-      ctx.font = `500 ${l.fontSize}px ${l.font}`
-      ctx.fillStyle = theme.noteText
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'alphabetic'
-      const bl = lineBaseline(l.font, l.fontSize, l.lh)
-      let y = Math.max(NOTE_PAD, l.boxH / 2 - l.textH / 2) + bl
-      if (opts.hideText !== 'text') {
-        for (const line of l.lines) {
-          ctx.fillText(line.text, NOTE_W / 2, y)
-          y += l.lh
-        }
-      }
+      if (opts.hideText !== 'text') drawLabel(ctx, theme, shape, theme.noteText)
       break
     }
     case 'image': {
@@ -521,6 +670,9 @@ export function drawShape(ctx, shape, opts) {
       break
     }
   }
+  // a shape that links somewhere wears a badge (notes draw in their own
+  // scale, so it rides that too)
+  if (p.url) drawUrlBadge(ctx, theme, shape, shape.type === 'note' ? theme.noteText : col.stroke)
   ctx.restore()
 }
 

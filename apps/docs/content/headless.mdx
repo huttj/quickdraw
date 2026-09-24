@@ -88,6 +88,27 @@ member selects the whole group; double-clicking a member focuses the group
 `Esc` steps back out. Groups are flat: grouping a selection that contains
 groups merges them into one.
 
+## Pasting from tldraw
+
+Copy in tldraw, paste on a Quickdraw board: text, sticky notes, shapes with
+their labels, freehand ink and highlights, arrows and lines (with their
+bindings), images with their crops, frames, and groups all come across.
+tldraw keeps its shapes in the HTML entry of the clipboard, so this works
+through the ordinary `⌘V` — which is why `⌘V` is left to the browser's own
+paste event instead of the async clipboard API.
+
+```js
+import { parseTldrawClipboard } from '@quickdrawjs/core'
+
+const content = parseTldrawClipboard(htmlFromTheClipboard)   // or null
+if (content) await editor.importTldraw(content)               // centred in the view, selected
+```
+
+Image assets hosted at URLs are fetched into data URLs so they render,
+export and sync like Quickdraw's own; one that can't be fetched (a host
+without CORS) keeps its URL and still displays. Plain text pasted from
+anywhere becomes a text shape.
+
 ## Arrow bindings
 
 An arrow (or line) drawn from inside a shape, or ended over one, ties

@@ -9,10 +9,12 @@ export {
   themeOf, THEMES, COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS,
   SIZES, FONT_SIZES, FONTS,
 } from './palette.js'
-export { pageBounds, localBounds, drawShape, hitShape, imageFrame } from './shapes.js'
+export { pageBounds, localBounds, drawShape, hitShape, imageFrame, runsIn, mapMarks, textLinkAt, urlBadgeAt } from './shapes.js'
+export { openUrl } from './editor.js'
 export { strokeOutline } from './freehand.js'
 export { sceneToSvg, shapeToSvg } from './svg.js'
 export { BINDABLE, anchorAt, anchorPoint, boundTerminals, rebindArrow, outlinePolygon } from './bindings.js'
+export { parseTldrawClipboard, convertTldrawContent, decodeDrawPath, richTextToPlain, richTextToText, decompressFromBase64 } from './tldraw.js'
 
 import { Editor } from './editor.js'
 import { buildUI } from './ui.js'

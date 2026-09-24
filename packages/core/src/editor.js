@@ -8,10 +8,12 @@ import { themeOf, SIZES, FONT_SIZES, GEO_IDS, COLOR_IDS, GRID_IDS, GRID_STEP, GR
 import {
   localBounds, pageBounds, toLocal, drawShape, hitShape, marqueeHits,
   scaleShape, textLayout, noteLayout, NOTE_W, sampleLinePts, imageFrame,
+  mapMarks, textLinkAt, urlBadgeAt,
 } from './shapes.js'
 import { boundsUnion, boundsExpand, boundsContain, clamp, rotWith } from './geometry.js'
 import { sceneToSvg } from './svg.js'
 import { BINDABLE, insideShape, anchorAt, rebindArrow, remapBindings } from './bindings.js'
+import { parseTldrawClipboard, convertTldrawContent } from './tldraw.js'
 
 const ZOOM_MIN = 0.05
 const ZOOM_MAX = 8
@@ -27,6 +29,33 @@ const BOX_HANDLES = {
   tl: [0, 0], t: [0.5, 0], tr: [1, 0], l: [0, 0.5], r: [1, 0.5], bl: [0, 1], b: [0.5, 1], br: [1, 1],
 }
 const CROP_MIN = 8 // page units — a crop window never collapses past this
+// Rotation for a mouse: no knob, just a zone outside each corner where the
+// cursor turns into a rotate arrow (tldraw's way). The zone reaches this
+// far (screen px) from the corner, beyond the resize handle.
+const ROTATE_ZONE = 24
+// The rotate cursor: tldraw's own corner arrow (MIT), a data-URL SVG turned
+// to sit against its corner — 0° for the top-left, a quarter turn more for
+// each corner clockwise, plus the shape's rotation — with a soft shadow so
+// it reads on any paper. Browsers have no rotate cursor of their own.
+const ROTATE_CORNER_SVG =
+  `<path d='M22.4789 9.45728L25.9935 12.9942L22.4789 16.5283V14.1032C18.126 14.1502 14.6071 17.6737 14.5675 22.0283H17.05L13.513 25.543L9.97889 22.0283H12.5674C12.6071 16.5691 17.0214 12.1503 22.4789 12.1031L22.4789 9.45728Z' fill='black'/>` +
+  `<path fill-rule='evenodd' clip-rule='evenodd' d='M21.4789 7.03223L27.4035 12.9945L21.4789 18.9521V15.1868C18.4798 15.6549 16.1113 18.0273 15.649 21.0284H19.475L13.5128 26.953L7.55519 21.0284H11.6189C12.1243 15.8155 16.2679 11.6677 21.4789 11.1559L21.4789 7.03223ZM22.4789 12.1031C17.0214 12.1503 12.6071 16.5691 12.5674 22.0284H9.97889L13.513 25.543L17.05 22.0284H14.5675C14.5705 21.6896 14.5947 21.3558 14.6386 21.0284C15.1157 17.4741 17.9266 14.6592 21.4789 14.1761C21.8063 14.1316 22.1401 14.1069 22.4789 14.1032V16.5284L25.9935 12.9942L22.4789 9.45729L22.4789 12.1031Z' fill='white'/>`
+const rotateCursors = new Map()
+const rotateCursor = (deg) => {
+  const d = ((Math.round(deg / 5) * 5) % 360 + 360) % 360
+  let c = rotateCursors.get(d)
+  if (c) return c
+  const a = (-d * Math.PI) / 180
+  const dx = Math.cos(a) - Math.sin(a), dy = Math.sin(a) + Math.cos(a)
+  const svg =
+    `<svg height='32' width='32' viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'>` +
+    `<defs><filter id='shadow' y='-40%' x='-40%' width='180px' height='180%' color-interpolation-filters='sRGB'>` +
+    `<feDropShadow dx='${dx.toFixed(2)}' dy='${dy.toFixed(2)}' stdDeviation='1.2' flood-opacity='.5'/></filter></defs>` +
+    `<g fill='none' transform='rotate(${d} 16 16)' filter='url(%23shadow)'>${ROTATE_CORNER_SVG}</g></svg>`
+  c = `url("data:image/svg+xml,${svg.replace(/#/g, '%23').replace(/</g, '%3C').replace(/>/g, '%3E')}") 16 16, pointer`
+  rotateCursors.set(d, c)
+  return c
+}
 const LONG_PRESS = 500 // ms of a still touch before the context menu opens
 
 export const ALIGN_MODES = ['left', 'center', 'right', 'top', 'middle', 'bottom']
@@ -70,6 +99,9 @@ export class Editor {
     // back out; auto-arm happens only once so that choice sticks.
     this.penMode = false
     this._penSeen = false
+    // a coarse pointer (touch) can't hover a corner zone: it keeps the
+    // rotate knob. The media query decides, and any touch seen confirms it.
+    this._coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches
     this._penDown = false
     this._events = new Map()
     this._raf = 0
@@ -635,13 +667,33 @@ export class Editor {
         (a.id < b.id ? -1 : 1)
     )
   }
-  hitTest(px, py) {
+  // The shape under a page point, topmost first. `inside` (the select tool)
+  // also takes the empty middle of a hollow shape, and the empty space
+  // inside a group's frame, as a hit — the smallest such body wins, so a
+  // box inside a box picks the inner one. The eraser leaves that off: a
+  // sweep through an empty box shouldn't take the box.
+  hitTest(px, py, { inside = false } = {}) {
     const tol = 8 / this.camera.z
     const list = this.shapesSorted()
     for (let i = list.length - 1; i >= 0; i--) {
       if (hitShape(list[i], px, py, tol, this.store)) return list[i]
     }
-    return null
+    if (!inside) return null
+    let best = null, bestArea = Infinity
+    for (const s of list) {
+      if (s.type !== 'geo' || s.props.fill !== 'none') continue
+      const area = s.props.w * s.props.h
+      if (area < bestArea && insideShape(s, px, py)) { best = s; bestArea = area }
+    }
+    if (best) return best
+    const seen = new Set()
+    for (const s of list) {
+      if (!s.groupId || seen.has(s.groupId)) continue
+      seen.add(s.groupId)
+      const b = this._groupBounds(s.groupId)
+      if (b && boundsContain(b, px, py) && b.w * b.h < bestArea) { best = s; bestArea = b.w * b.h }
+    }
+    return best
   }
 
   // ---- input ---------------------------------------------------------------
@@ -694,6 +746,7 @@ export class Editor {
     this._ptrType.set(e.pointerId, e.pointerType)
     try { this.container.setPointerCapture(e.pointerId) } catch {}
 
+    if (e.pointerType === 'touch' && !this._coarse) { this._coarse = true; this.requestRender() }
     if (e.pointerType === 'pen') {
       this._penDown = true
       // first stylus contact arms pen mode, once — turning it off is a choice
@@ -1188,7 +1241,15 @@ export class Editor {
     this.container.appendChild(ta)
     this.editing = { id, field, textarea: ta, fresh }
     const sync = () => {
+      const cur = this.store.get(id)
+      if (!cur) return
       const patch = field === 'label' ? { label: ta.value } : { text: ta.value }
+      // marks ride along with the edit (see mapMarks)
+      const mk = field === 'label' ? 'labelMarks' : 'marks'
+      if (cur.props[mk]?.length) {
+        const mapped = mapMarks(cur.props[mk], field === 'label' ? cur.props.label : cur.props.text, ta.value)
+        patch[mk] = mapped.length ? mapped : undefined
+      }
       this.store.update(id, { props: patch })
       this._layoutTextEditor()
     }
@@ -1306,7 +1367,7 @@ export class Editor {
           start: Math.atan2(p.y - (b.y + b.h / 2), p.x - (b.x + b.w / 2)),
           orig: this._snapshotSelection(),
         }
-        this._syncCursor('grabbing')
+        this._syncCursor(h.cursor || 'grabbing')
       } else if (h.kind === 'handle') {
         this.session = { type: 'handle', which: h.which, id: h.id }
       } else {
@@ -1319,10 +1380,14 @@ export class Editor {
       }
       return
     }
-    const hit = this.hitTest(p.x, p.y)
+    const hit = this.hitTest(p.x, p.y, { inside: true })
     // a press outside the focused group steps back out of it
     if (this.focusedGroup && hit?.groupId !== this.focusedGroup) this.focusedGroup = null
     if (hit) {
+      // a press on a link (the badge of a shape that links, or a linked run
+      // of its text) follows it instead
+      const href = this._linkAt(hit, p)
+      if (href) { openUrl(href); return }
       // a grouped shape brings its siblings along (unless its group is focused)
       const pick = this._withGroups([hit.id])
       const wasSelected = this.selection.has(hit.id)
@@ -1656,7 +1721,7 @@ export class Editor {
   _openContextMenu(s) {
     this._commitText()
     const p = this.screenToPage(s.x, s.y)
-    const hit = this.hitTest(p.x, p.y)
+    const hit = this.hitTest(p.x, p.y, { inside: true })
     if (hit) {
       if (this.tool !== 'select') this.setTool('select')
       if (!this.selection.has(hit.id)) this.setSelection(this._withGroups([hit.id]))
@@ -1708,13 +1773,25 @@ export class Editor {
     const h = this._hitHandle(s.x, s.y)
     if (h) {
       this._syncCursor(
-        h.kind === 'rotate' ? 'grab' : h.kind === 'handle' ? 'pointer' : RESIZE_CURSORS[h.which] || 'default'
+        h.kind === 'rotate' ? h.cursor || 'grab' : h.kind === 'handle' ? 'pointer' : RESIZE_CURSORS[h.which] || 'default'
       )
       return
     }
     const p = this.screenToPage(s.x, s.y)
-    const hit = this.hitTest(p.x, p.y)
+    const hit = this.hitTest(p.x, p.y, { inside: true })
+    if (hit && this._linkAt(hit, p)) { this._syncCursor('pointer'); return }
     this._syncCursor(hit && this.selection.has(hit.id) ? 'move' : null)
+  }
+  // the link under a page point on a shape: its url badge, or a linked run
+  // of its text — or null
+  _linkAt(shape, p) {
+    const l = toLocal(shape, p.x, p.y)
+    const b = urlBadgeAt(shape)
+    if (b) {
+      const s = shape.type === 'note' ? shape.props.scale || 1 : 1
+      if (Math.hypot(l.x / s - b.x, l.y / s - b.y) <= b.r + 2) return shape.props.url
+    }
+    return textLinkAt(shape, l.x, l.y)
   }
 
   // The rotate knob: 22px out from the middle of the top edge. A single
@@ -1763,12 +1840,34 @@ export class Editor {
     const tl = this.pageToScreen(b.x, b.y)
     const br = this.pageToScreen(b.x + b.w, b.y + b.h)
     const rotatable = !one || !['arrow', 'line'].includes(one.type)
-    if (rotatable) {
+    if (rotatable && this._coarse) {
       const r = this._rotateHandle(one)
       if (Math.hypot(r.x - sx, r.y - sy) <= HANDLE + 2) return { kind: 'rotate' }
     }
     for (const [which, s] of this._resizeHandles(one, b)) {
       if (Math.abs(s.x - sx) <= HANDLE && Math.abs(s.y - sy) <= HANDLE) return { kind: 'resize', which }
+    }
+    if (rotatable) return this._hitRotateZone(one, b, sx, sy)
+    return null
+  }
+  // the invisible rotate zones: just outside each corner of the box (the
+  // shape's own, turned, for a rotated single shape), past the resize
+  // handle, and never inside the box itself
+  _hitRotateZone(one, b, sx, sy) {
+    const rot = one?.rot || 0
+    const handles = Object.fromEntries(this._resizeHandles(one, b).filter(([w]) => w.length === 2))
+    // the pointer in the box's frame, to tell outside from inside
+    const p = this.screenToPage(sx, sy)
+    const l = one && rot ? toLocal(one, p.x, p.y) : p
+    const box = one && rot ? localBounds(one) : b
+    const outside = l.x < box.x || l.x > box.x + box.w || l.y < box.y || l.y > box.y + box.h
+    if (!outside) return null
+    const BASE = { tl: 0, tr: 90, br: 180, bl: 270 }
+    for (const [corner, h] of Object.entries(handles)) {
+      const d = Math.hypot(h.x - sx, h.y - sy)
+      if (d > HANDLE + 2 && d <= ROTATE_ZONE) {
+        return { kind: 'rotate', corner, cursor: rotateCursor(BASE[corner] + (rot * 180) / Math.PI) }
+      }
     }
     return null
   }
@@ -1790,7 +1889,7 @@ export class Editor {
     if (this.readonly || this.tool !== 'select') return
     const s = this._evPoint(e)
     const p = this.screenToPage(s.x, s.y)
-    const hit = this.hitTest(p.x, p.y)
+    const hit = this.hitTest(p.x, p.y, { inside: true })
     if (hit) {
       if (hit.groupId && hit.groupId !== this.focusedGroup) {
         // dive into the group: from here its members select one at a time
@@ -1836,7 +1935,9 @@ export class Editor {
     if (meta && k === 'g') { e.preventDefault(); e.shiftKey ? this.ungroupSelection() : this.groupSelection(); return }
     if (meta && k === 'c') { e.preventDefault(); this.copySelection(); return }
     if (meta && k === 'x') { e.preventDefault(); this.copySelection().then(() => this.deleteSelection()); return }
-    if (meta && k === 'v') { e.preventDefault(); this.pasteFromClipboard(); return }
+    // ⌘V is left to the browser: its paste event brings files, HTML and text
+    // without a permission prompt, and lands in _paste
+    if (meta && k === 'v') return
     if (meta && (k === '=' || k === '+')) { e.preventDefault(); this._zoomCenter(1.25); return }
     if (meta && k === '-') { e.preventDefault(); this._zoomCenter(1 / 1.25); return }
     if (k === 'escape') {
@@ -1974,8 +2075,10 @@ export class Editor {
       await navigator.clipboard.writeText(JSON.stringify({ quickdraw: 1, shapes, assets }))
     } catch (e) { console.warn('board copy failed', e) }
   }
+  // Programmatic paste (a menu item; ⌘V goes through the browser's own
+  // paste event, which needs no permission). Images first, then HTML — that's
+  // where tldraw keeps its shapes — then text: our payload, or plain words.
   async pasteFromClipboard() {
-    // images first, then our own shape payloads
     try {
       if (navigator.clipboard.read) {
         const items = await navigator.clipboard.read()
@@ -1987,17 +2090,79 @@ export class Editor {
             return
           }
         }
+        for (const it of items) {
+          if (!it.types.includes('text/html')) continue
+          const html = await (await it.getType('text/html')).text()
+          if (await this._pasteHtml(html)) return
+        }
       }
     } catch {}
     try {
       const text = await navigator.clipboard.readText()
-      const data = JSON.parse(text)
-      if (data && data.quickdraw && Array.isArray(data.shapes)) this._pasteShapes(data)
+      await this._pasteText(text)
     } catch {}
   }
-  _pasteShapes(data) {
+  // tldraw's clipboard HTML → its shapes on our board; true when it was that
+  async _pasteHtml(html) {
+    const content = parseTldrawClipboard(html)
+    if (!content) return false
+    await this.importTldraw(content)
+    return true
+  }
+  // clipboard text: our own payload, tldraw's (its text fallback), or plain
+  // words, which land as a text shape mid-view
+  async _pasteText(text) {
+    if (!text || !text.trim()) return false
+    try {
+      const data = JSON.parse(text)
+      if (data && data.quickdraw && Array.isArray(data.shapes)) { this._pasteShapes(data); return true }
+    } catch {}
+    if (await this._pasteHtml(text)) return true
+    const vp = this.viewportPageBounds()
+    const id = newId()
+    this.store.put({
+      id, typeName: 'shape', type: 'text', x: vp.x + vp.w / 2, y: vp.y + vp.h / 2, rot: 0, z: this.store.maxZ() + 1,
+      props: { text: text.replace(/\r\n?/g, '\n'), color: this.styles.color, size: this.styles.size, font: this.styles.font, autosize: true, scale: 1 },
+    })
+    // centre it on the view now that it has a size
+    const b = pageBounds(this.store.get(id))
+    this.store.update(id, { x: vp.x + vp.w / 2 - b.w / 2, y: vp.y + vp.h / 2 - b.h / 2 })
+    if (this.tool !== 'select') this.setTool('select')
+    this.setSelection([id])
+    return true
+  }
+  // tldraw content (see tldraw.js) → our board, centred in the view (or at
+  // `at`), selected. Image assets hosted at URLs are fetched into data URLs
+  // so they render, export and sync like our own; one that can't be fetched
+  // keeps its URL and still shows. Returns the new ids.
+  async importTldraw(content, { at } = {}) {
+    const { shapes, assets } = convertTldrawContent(content)
+    if (!shapes.length) return []
+    await Promise.all(assets.map(async (a) => {
+      if (!/^https?:/i.test(a.src)) return
+      try {
+        const blob = await (await fetch(a.src, { mode: 'cors' })).blob()
+        const img = await readImage(blob)
+        a.src = img.src; a.w = img.w; a.h = img.h
+      } catch (e) { console.warn('tldraw image not fetched, keeping its URL', a.src, e) }
+    }))
+    return this._pasteShapes({ shapes, assets }, { center: at || 'view' })
+  }
+  // put a bundle of our records on the board with fresh ids, groups,
+  // bindings and assets remapped; nudged by 16px like a duplicate, or
+  // centred on a page point ('view' = the middle of the viewport)
+  _pasteShapes(data, { center = null } = {}) {
     let z = this.store.maxZ()
     const ids = []
+    let dx = 16, dy = 16
+    if (center) {
+      let b = null
+      for (const s of data.shapes) b = boundsUnion(b, pageBounds(s))
+      const vp = this.viewportPageBounds()
+      const target = center === 'view' ? { x: vp.x + vp.w / 2, y: vp.y + vp.h / 2 } : center
+      dx = b ? target.x - (b.x + b.w / 2) : 0
+      dy = b ? target.y - (b.y + b.h / 2) : 0
+    }
     this.store.transact(() => {
       const assetMap = {}
       for (const a of Object.values(data.assets || {})) {
@@ -2012,7 +2177,7 @@ export class Editor {
         const nid = idMap[s.id]
         ids.push(nid)
         const rec = {
-          ...s, id: nid, x: s.x + 16, y: s.y + 16, z: ++z,
+          ...s, id: nid, x: s.x + dx, y: s.y + dy, z: ++z,
           props: remapBindings(s.props.assetId ? { ...s.props, assetId: assetMap[s.props.assetId] || s.props.assetId } : s.props, idMap),
         }
         if (s.groupId) rec.groupId = groups[s.groupId] ||= newId('group')
@@ -2021,11 +2186,20 @@ export class Editor {
     })
     if (this.tool !== 'select') this.setTool('select')
     this.setSelection(ids)
+    return ids
   }
+  // the browser's paste event (⌘V): image files, then HTML (tldraw's
+  // shapes live there), then text
   _paste(e) {
     if (this.readonly || this.editing) return
-    const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'))
-    if (files.length) { e.preventDefault(); this.importImageBlobs(files) }
+    const cd = e.clipboardData
+    const files = [...(cd?.files || [])].filter((f) => f.type.startsWith('image/'))
+    if (files.length) { e.preventDefault(); this.importImageBlobs(files); return }
+    const html = cd?.getData?.('text/html') || ''
+    const text = cd?.getData?.('text/plain') || ''
+    if (!html && !text) return
+    e.preventDefault()
+    this._pasteHtml(html).then((done) => (done ? null : this._pasteText(text))).catch((err) => console.warn('paste failed', err))
   }
   _drop(e) {
     if (this.readonly) return
@@ -2392,17 +2566,20 @@ export class Editor {
           const tl = this.pageToScreen(b.x, b.y)
           const br = this.pageToScreen(b.x + b.w, b.y + b.h)
           if (!(one && one.rot)) ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y)
-          // rotate handle: a stem from the top edge to the knob
-          const r = this._rotateHandle(one)
-          const dx = (r.x - r.ax) / 22, dy = (r.y - r.ay) / 22
-          ctx.beginPath()
-          ctx.moveTo(r.ax, r.ay)
-          ctx.lineTo(r.x - dx * 5, r.y - dy * 5)
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.arc(r.x, r.y, 5, 0, Math.PI * 2)
-          ctx.fill()
-          ctx.stroke()
+          // the rotate knob, for fingers: a stem from the top edge to it.
+          // A mouse rotates from the corners instead (see _hitRotateZone).
+          if (this._coarse) {
+            const r = this._rotateHandle(one)
+            const dx = (r.x - r.ax) / 22, dy = (r.y - r.ay) / 22
+            ctx.beginPath()
+            ctx.moveTo(r.ax, r.ay)
+            ctx.lineTo(r.x - dx * 5, r.y - dy * 5)
+            ctx.stroke()
+            ctx.beginPath()
+            ctx.arc(r.x, r.y, 5, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.stroke()
+          }
           // resize handles: on the box — a rotated shape's own box, squares
           // turned with it
           for (const [, h] of this._resizeHandles(one, b)) this._drawHandle(ctx, h, one?.rot || 0)
@@ -2558,6 +2735,12 @@ export class Editor {
     this.overlay.remove()
     c.classList.remove('qd-root')
   }
+}
+
+// follow a link from the board, in a new tab and only to somewhere sane
+export function openUrl(href) {
+  if (!/^(https?:|mailto:)/i.test(String(href))) return
+  try { window.open(href, '_blank', 'noopener,noreferrer') } catch {}
 }
 
 // decode + gently downscale an imported image, return a dataURL asset

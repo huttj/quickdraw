@@ -59,6 +59,23 @@ export interface Styles {
 export type ShapeType =
   | 'draw' | 'highlight' | 'geo' | 'arrow' | 'line' | 'text' | 'note' | 'image'
 
+/**
+ * A run of marked text: character offsets [from, to) in the shape's text
+ * with any of bold, italic, underline, strike, code, highlight, or a link.
+ * Text and notes carry them as `props.marks`, geo labels as `props.labelMarks`.
+ */
+export interface TextMark {
+  from: number
+  to: number
+  b?: boolean
+  i?: boolean
+  u?: boolean
+  s?: boolean
+  code?: boolean
+  hl?: boolean
+  href?: string
+}
+
 /** A shape record. `props` vary by `type`; records are treated as immutable. */
 export interface ShapeRecord {
   id: string
@@ -144,6 +161,16 @@ export function composeDiff(a: Diff, b: Diff): Diff
 export function localBounds(shape: ShapeRecord): Bounds
 /** Axis-aligned page bounds of a shape, rotation included. */
 export function pageBounds(shape: ShapeRecord): Bounds
+/** The runs covering [from, to) of a text: [start, end, style]; unmarked stretches get an empty style. */
+export function runsIn(marks: TextMark[] | undefined, from: number, to: number): Array<[number, number, Partial<TextMark>]>
+/** Carry marks across an edit of their text (positions before stay, after shift, inside collapse; empty runs go). */
+export function mapMarks(marks: TextMark[] | undefined, oldText: string, newText: string): TextMark[] | undefined
+/** The link under a shape-local point on a text, note, or geo label, or null. */
+export function textLinkAt(shape: ShapeRecord, lx: number, ly: number): string | null
+/** The link badge a shape with `props.url` wears (local centre and radius), or null. */
+export function urlBadgeAt(shape: ShapeRecord): { x: number; y: number; r: number } | null
+/** Follow a link from the board: a new tab, http(s) and mailto only. */
+export function openUrl(href: string): void
 /** The full source picture of an image shape, laid out in the shape's local frame (crop undone). */
 export function imageFrame(shape: ShapeRecord): Bounds
 /** Render one shape into a 2d context already transformed to page space. */
@@ -162,6 +189,27 @@ export function drawShape(
 ): void
 /** Point hit-test in page space. */
 export function hitShape(shape: ShapeRecord, px: number, py: number, tol: number, store: Store): boolean
+
+/** What tldraw puts on the clipboard: its records, as it serializes them. */
+export interface TldrawContent {
+  shapes: any[]
+  bindings?: any[]
+  assets?: any[]
+  rootShapeIds?: string[]
+  schema?: any
+}
+/** tldraw's content from the HTML (or text) it put on the clipboard, or null when it isn't tldraw's. */
+export function parseTldrawClipboard(text: string): TldrawContent | null
+/** tldraw's rich text → our text plus marks. */
+export function richTextToText(richText: unknown): { text: string; marks: TextMark[] }
+/** tldraw content → our records (still carrying tldraw's ids) and image assets. */
+export function convertTldrawContent(content: TldrawContent): { shapes: ShapeRecord[]; assets: AssetRecord[] }
+/** tldraw's base64 stroke path → flat [x, y, pressure, ...] triplets. */
+export function decodeDrawPath(b64: string, dim?: 2 | 3): number[]
+/** Plain text out of tldraw's rich text (TipTap JSON), or a legacy string. */
+export function richTextToPlain(richText: unknown): string
+/** lz-string's decompressFromBase64, ported (tldraw compresses its clipboard with it). */
+export function decompressFromBase64(input: string): string | null
 
 /** Shape types an arrow end can tie to. */
 export const BINDABLE: Set<ShapeType>
@@ -375,7 +423,14 @@ export class Editor {
 
   // clipboard / images
   copySelection(): Promise<void>
+  /** Programmatic paste: images, tldraw's clipboard HTML, our own payload, or plain text (as a text shape). ⌘V uses the browser's paste event instead. */
   pasteFromClipboard(): Promise<void>
+  /**
+   * Put tldraw content (see `parseTldrawClipboard`) on the board: converted
+   * to our shapes, centred in the view (or at `at`), selected. Remote image
+   * assets are fetched into data URLs. Resolves with the new ids.
+   */
+  importTldraw(content: TldrawContent, opts?: { at?: { x: number; y: number } }): Promise<string[]>
   importImageBlobs(blobs: Blob[] | File[], at?: { x: number; y: number }): Promise<void>
   pickImage(): void
 

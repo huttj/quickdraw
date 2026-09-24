@@ -28,6 +28,32 @@ helps people find the project, and turning it off is free, legal, and one line
 — `watermark: false`, no license key, no signup, no phone-home. We just
 appreciate the credit.
 
+## About this fork
+
+This is a fork of [quickdrawjs/quickdraw](https://github.com/quickdrawjs/quickdraw)
+that pulls the editor closer to tldraw's feel. On top of the upstream engine
+it adds:
+
+- **Image cropping** — double-click an image, trim the window, slide the picture behind it
+- **Groups** — `⌘G` / `⇧⌘G`, click a member to select the group, double-click to dive in
+- **Arrow bindings** — arrows and lines tie to shapes and follow them; ends sit on the outline
+- **Alignment and distribution**, and one-step **ordering** (`]` / `[`, `⇧` for all the way)
+- **Context menu** on right-click and touch long-press, with Reorder and Align flyouts
+- **Drag tools off the dock** onto the board to drop a ready-made shape
+- **SVG export** alongside PNG, from the menus, the API, and the React Native bridge
+- **tldraw-style transforms** — rotate from the corners with a mouse (the knob stays for touch),
+  resize rotated shapes in their own frame, `⌥` to resize about the centre, `⌥` as a live
+  copy toggle while dragging, and pressing inside hollow shapes or groups to move them
+- **Paste from tldraw** — shapes, ink, notes, arrows with bindings, images with crops, frames,
+  groups, and formatted text (bold, italic, highlight, links…) come across, images included
+- **Marked text and links** — bold / italic / underline / strike / code / highlight / link runs
+  on text, notes and labels, plus a link badge for shapes that link somewhere
+- The **pointer** is the default tool
+
+Everything is still zero-dependency ESM; the two codecs tldraw's clipboard
+relies on (lz-string, its Float16 stroke paths) are ported inline. See the
+[changelog](CHANGELOG.md) for the details.
+
 ## What you get
 
 A simple, joyful drawing experience:
@@ -52,6 +78,7 @@ A simple, joyful drawing experience:
   (blueprint), and isometric; default is `lines`; spacing adapts to the zoom
   and fades in rather than popping
 - **Arrows that bind** — draw from a shape to a shape and the arrow follows them
+- **Paste from tldraw** — shapes, ink, notes, arrows, images, and formatted text come across as-is
 - **PNG & SVG export** — whole board or selection, on paper or transparent
 - **A responsive floating toolbar** that sheds tools gracefully as the frame
   narrows — or hide it and build your own from the headless API

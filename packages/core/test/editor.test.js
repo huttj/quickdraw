@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Editor, TOOLS } from '../src/editor.js'
 import { createQuickdraw } from '../src/index.js'
-import { pageBounds } from '../src/shapes.js'
+import { pageBounds, textLayout, lineRuns } from '../src/shapes.js'
 
 // Fake pointer events fed straight to the editor's handlers. The container
 // sits at (0,0) in jsdom, so clientX/Y are screen coords directly.
@@ -225,9 +225,10 @@ describe('selection & transforms', () => {
     expect(editor.store.get(a.id).z).toBeLessThan(editor.store.get(b.id).z)
   })
 
-  it('the rotate knob turns with a rotated shape instead of hovering over its bounding box', () => {
+  it('the rotate knob (for fingers) turns with a rotated shape instead of hovering over its bounding box', () => {
     const a = makeRect(100, 100, 100, 60) // centre 150,130
     editor.setSelection([a.id])
+    editor._coarse = true // a touch board keeps the knob
     // unrotated: 22px above the middle of the top edge
     expect(editor._hitHandle(150, 78)?.kind).toBe('rotate')
     editor.store.update(a.id, { rot: Math.PI / 2 }) // a quarter turn clockwise
@@ -741,8 +742,9 @@ describe('groups', () => {
     editor.setSelection([])
     drag(editor, [[10, 10]]) // click a's corner
     expect(new Set(editor.selection)).toEqual(new Set([a.id, b.id]))
-    // marquee across a alone still brings b along
-    drag(editor, [[0, 0], [90, 60]])
+    // marquee across a alone still brings b along (started well clear of the
+    // selection's corner, which is a rotate zone for a mouse)
+    drag(editor, [[-40, -40], [90, 60]])
     expect(new Set(editor.selection)).toEqual(new Set([a.id, b.id]))
     // shift-click c adds it; shift-click a's top edge (clear of the selection
     // box's corner handle) removes the whole group
@@ -1434,6 +1436,94 @@ describe('arrow bindings', () => {
   })
 })
 
+describe('rotate zones (mouse)', () => {
+  it('a mouse has no knob: the zone just outside each corner rotates, with a rotate cursor', () => {
+    const a = rectAt(editor, 100, 100, 100, 60)
+    editor.setSelection([a.id])
+    expect(editor._coarse).toBe(false)
+    // no knob above the box
+    expect(editor._hitHandle(150, 78)).toBe(null)
+    // the resize handle wins right at the corner, the rotate zone sits past it
+    expect(editor._hitHandle(96, 96)).toEqual({ kind: 'resize', which: 'tl' })
+    const z = editor._hitHandle(86, 86)
+    expect(z?.kind).toBe('rotate')
+    expect(z.corner).toBe('tl')
+    expect(z.cursor).toMatch(/^url\("data:image\/svg\+xml/)
+    expect(editor._hitHandle(214, 174)?.corner).toBe('br')
+    // inside the box near a corner is not a zone; far outside isn't either
+    expect(editor._hitHandle(112, 112)).toBe(null)
+    expect(editor._hitHandle(60, 60)).toBe(null)
+    // hovering there shows the rotate cursor; dragging there rotates about the centre
+    editor._hoverCursor({ target: editor.canvas, clientX: 86, clientY: 86 })
+    expect(editor.container.style.cursor).toContain('data:image/svg+xml')
+    drag(editor, [[86, 86], [150, 40]]) // from the top-left zone round to straight above the centre
+    const s = editor.store.get(a.id)
+    const turned = Math.atan2(40 - 130, 150 - 150) - Math.atan2(86 - 130, 86 - 150)
+    expect(s.rot).toBeCloseTo(turned, 5)
+    expect(s.x + s.props.w / 2).toBeCloseTo(150)
+    expect(s.y + s.props.h / 2).toBeCloseTo(130)
+    // a rotated shape's zones turn with it: its local top-left corner is now elsewhere
+    const [, tl] = editor._resizeHandles(s, null).find(([w]) => w === 'tl')
+    const ang = Math.atan2(tl.y - 130, tl.x - 150)
+    const zone = editor._hitHandle(tl.x + Math.cos(ang) * 16, tl.y + Math.sin(ang) * 16)
+    expect(zone?.kind).toBe('rotate')
+  })
+
+  it('a touch seen brings the knob back', () => {
+    const a = rectAt(editor, 100, 100, 100, 60)
+    editor.setSelection([a.id])
+    pid++
+    editor._pointerDown({ ...ev(400, 400, { pointerType: 'touch' }), target: editor.canvas })
+    editor._pointerUp({ ...ev(400, 400, { pointerType: 'touch' }), target: editor.canvas })
+    editor.setSelection([a.id])
+    expect(editor._coarse).toBe(true)
+    expect(editor._hitHandle(150, 78)?.kind).toBe('rotate')
+  })
+})
+
+describe('hollow hits', () => {
+  it('pressing inside an unfilled shape selects and moves it; the eraser still needs the edge', () => {
+    const a = rectAt(editor, 100, 100, 200, 120)
+    const inner = rectAt(editor, 150, 150, 40, 40) // a box inside the box
+    editor.setSelection([])
+    drag(editor, [[120, 200]]) // empty middle of a, outside inner
+    expect([...editor.selection]).toEqual([a.id])
+    drag(editor, [[170, 170]]) // inside both: the smaller wins
+    expect([...editor.selection]).toEqual([inner.id])
+    // drag from the empty middle moves it
+    editor.setSelection([])
+    drag(editor, [[120, 200], [140, 230]])
+    expect(editor.store.get(a.id).x).toBeCloseTo(120)
+    expect(editor.store.get(a.id).y).toBeCloseTo(130)
+    // the eraser sweeping through the middle (a now spans 120..320 × 130..250,
+    // the inner box 150..190) takes nothing
+    editor.setTool('eraser')
+    drag(editor, [[220, 200], [225, 205]])
+    expect(editor.store.shapes().length).toBe(2)
+    // a filled shape still hits everywhere, as before
+    editor.setTool('select')
+    editor.store.update(a.id, { props: { fill: 'solid' } })
+    expect(editor.hitTest(220, 200, { inside: true })?.id).toBe(a.id)
+    expect(editor.hitTest(220, 200)?.id).toBe(a.id)
+  })
+
+  it('pressing the empty space inside a group selects the group', () => {
+    const a = rectAt(editor, 0, 0, 60, 60)
+    const b = rectAt(editor, 300, 300, 60, 60)
+    editor.setSelection([a.id, b.id])
+    editor.groupSelection()
+    editor.setSelection([])
+    drag(editor, [[180, 180]]) // between the two members
+    expect(editor.selection.size).toBe(2)
+    drag(editor, [[180, 180], [200, 180]])
+    expect(editor.store.get(a.id).x).toBeCloseTo(20)
+    expect(editor.store.get(b.id).x).toBeCloseTo(320)
+    // outside the group's frame: nothing
+    drag(editor, [[500, 500]])
+    expect(editor.selection.size).toBe(0)
+  })
+})
+
 describe('resize pinning', () => {
   const text = (ed, x, y, t = 'hello world') => {
     ed.store.put({ id: 't', typeName: 'shape', type: 'text', x, y, rot: 0, z: 1, props: { text: t, color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
@@ -1516,5 +1606,53 @@ describe('resize pinning', () => {
     editor.render()
     ctx.rotate = orig
     expect(calls.filter((r) => Math.abs(r - 0.7) < 1e-9).length).toBe(8)
+  })
+})
+
+describe('links', () => {
+  it('a press on a linked run or a link badge opens it; marks survive editing', () => {
+    const opened = []
+    const orig = window.open
+    window.open = (u) => { opened.push(u); return null }
+    try {
+      editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 100, y: 100, rot: 0, z: 1, props: { text: 'go to the site now', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1, marks: [{ from: 6, to: 14, href: 'https://site' }] } })
+      editor.setTool('select')
+      const lay = textLayout(editor.store.get('t'))
+      const link = lineRuns('go to the site now', lay.lines[0], [{ from: 6, to: 14, href: 'https://site' }], lay.fontSize, lay.font).find((r) => r.st.href)
+      // hover shows a pointer, a press follows the link without selecting
+      editor._hoverCursor({ target: editor.canvas, clientX: 100 + link.x + 2, clientY: 100 + lay.lh / 2 })
+      expect(editor.container.style.cursor).toBe('pointer')
+      drag(editor, [[100 + link.x + 2, 100 + lay.lh / 2]])
+      expect(opened).toEqual(['https://site'])
+      expect(editor.selection.size).toBe(0)
+      // a press on the plain part still selects
+      drag(editor, [[102, 100 + lay.lh / 2]])
+      expect([...editor.selection]).toEqual(['t'])
+      // typing into the text keeps the link on its words
+      editor.editShapeText('t')
+      const ta = editor.editing.textarea
+      ta.value = 'go to the site now!'
+      ta.dispatchEvent(new Event('input'))
+      ta.value = 'Go to the site now!'
+      ta.dispatchEvent(new Event('input'))
+      editor._commitText()
+      expect(editor.store.get('t').props.marks).toEqual([{ from: 6, to: 14, href: 'https://site' }])
+      // deleting the linked words drops the mark
+      editor.editShapeText('t')
+      editor.editing.textarea.value = 'Go now!'
+      editor.editing.textarea.dispatchEvent(new Event('input'))
+      editor._commitText()
+      expect(editor.store.get('t').props.marks).toBeUndefined()
+      // a shape-level link: its badge opens it
+      editor.store.put({ id: 'g', typeName: 'shape', type: 'geo', x: 300, y: 300, rot: 0, z: 2, props: { geo: 'rectangle', w: 100, h: 60, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw', url: 'https://box' } })
+      drag(editor, [[300 + 100 - 12, 300 + 12]])
+      expect(opened).toEqual(['https://site', 'https://box'])
+      // unsafe schemes are ignored
+      editor.store.update('g', { props: { url: 'javascript:alert(1)' } })
+      drag(editor, [[300 + 100 - 12, 300 + 12]])
+      expect(opened.length).toBe(2)
+    } finally {
+      window.open = orig
+    }
   })
 })

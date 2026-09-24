@@ -27,6 +27,13 @@ group record. Type-specific state lives in `props` (an image's `crop`
 window, or an arrow's `startBind` / `endBind` ties to other shapes, for
 instance). Records are plain JSON all the way down.
 
+Text is a plain string plus optional **marks**: runs of `{ from, to }`
+character offsets carrying `b` (bold), `i` (italic), `u` (underline), `s`
+(strike), `code`, `hl` (highlight) or `href` (a link). Text and notes keep
+them as `props.marks`, geo labels as `props.labelMarks`; they survive
+editing, and a linked run opens on click. Any shape can also carry a
+`props.url`, shown as a small link badge at its corner.
+
 ## Reactors
 
 Derived records — an arrow tied to a shape that just moved — are kept true

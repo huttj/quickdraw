@@ -29,6 +29,26 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **Rotate from the corners.** With a mouse there's no knob: the cursor
+  becomes tldraw's corner rotate arrow just outside each corner of the
+  selection, aligned to that corner, and dragging there rotates. Touch
+  boards keep the knob.
+- **Marked text.** Text, notes and shape labels can carry bold, italic,
+  underline, strike, code, highlight and link runs (`props.marks` /
+  `props.labelMarks`); they render on the canvas and in SVG, survive
+  editing, and a linked run opens on click. Any shape can carry a
+  `props.url`, shown as a link badge at its corner. tldraw pastes bring
+  all of this across.
+- **Hollow shapes and groups move from their middle.** Pressing the empty
+  inside of an unfilled shape, or the empty space inside a group's frame,
+  selects and drags it; the smallest such body wins. The eraser still needs
+  the edge.
+- **Paste from tldraw.** Copy in tldraw, ⌘V here: text, notes, shapes with
+  labels, ink, highlights, arrows and lines with their bindings, images
+  with their crops, frames and groups. Reads tldraw's clipboard payload
+  (its v2/v3 JSON and the older lz-string form) with dependency-free ports
+  of the two codecs it uses. Plain text pasted from anywhere becomes a text
+  shape. `parseTldrawClipboard` / `editor.importTldraw` for custom UIs.
 - **Arrows bind to shapes.** An arrow or line drawn from inside a shape, or
   ended over one, ties itself to it and follows the shape as it moves,
   resizes or rotates; the end sits on the shape's outline. Drag an end onto

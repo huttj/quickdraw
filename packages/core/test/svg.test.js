@@ -59,9 +59,11 @@ describe('sceneToSvg', () => {
     expect(svg).toContain('stroke-dasharray')
     expect(doc.querySelectorAll('g[data-shape="arrow"] path').length).toBe(2)
     expect(doc.querySelectorAll('g[data-shape="line"] path').length).toBe(1)
-    // the note text is centred on the sticky
+    // the note text is centred on the sticky: each line starts at (200 - its width) / 2
     const note = doc.querySelector('g[data-shape="note"]')
-    expect(note.querySelector('text').getAttribute('text-anchor')).toBe('middle')
+    const span = note.querySelector('tspan')
+    expect(parseFloat(span.getAttribute('x'))).toBeGreaterThan(0)
+    expect(parseFloat(span.getAttribute('x'))).toBeLessThan(100)
     expect(note.querySelector('g').getAttribute('transform')).toBe('scale(1.5)')
   })
 
@@ -94,5 +96,29 @@ describe('editor.exportSvg', () => {
     expect(one.querySelector('pattern')).toBe(null)
     editor.destroy()
     container.remove()
+  })
+})
+
+describe('marks in SVG', () => {
+  it('bold, italic, code, links, strikes and highlights come through as tspans and bands', () => {
+    const store = new Store()
+    const s = shape('text', {
+      text: 'bold link code strike', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1,
+      marks: [{ from: 0, to: 4, b: true, hl: true }, { from: 5, to: 9, href: 'https://x.y', i: true }, { from: 10, to: 14, code: true }, { from: 15, to: 21, s: true }],
+    })
+    const doc = parse(sceneToSvg([s], { theme: THEMES.light, store, background: false }))
+    const spans = [...doc.querySelectorAll('tspan')]
+    expect(spans.length).toBe(7) // 4 marked runs + 3 spaces between
+    expect(spans[0].getAttribute('font-weight')).toBe('700')
+    expect(spans[2].getAttribute('font-style')).toBe('italic')
+    expect(spans[2].getAttribute('text-decoration')).toBe('underline')
+    expect(spans[4].getAttribute('font-family')).toContain('monospace')
+    expect(spans[6].getAttribute('text-decoration')).toBe('line-through')
+    // one highlight band, behind the bold run
+    expect(doc.querySelectorAll('g[data-shape="text"] rect').length).toBe(1)
+    // a shape-level link wears its badge
+    const linked = shape('geo', { geo: 'rectangle', w: 100, h: 50, color: 'black', size: 'm', dash: 'solid', fill: 'none', url: 'https://example.com' })
+    const d2 = parse(sceneToSvg([linked], { theme: THEMES.light, store, background: false }))
+    expect(d2.querySelector('circle')).toBeTruthy()
   })
 })

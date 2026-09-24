@@ -6,8 +6,8 @@
 
 import { SIZES, HIGHLIGHT_ALPHA, HIGHLIGHT_SCALE, GRID_STEP, GRID_MAJOR } from './palette.js'
 import {
-  localBounds, pageBounds, textLayout, noteLayout, geoLabelLayout, lineBaseline,
-  buildGeoPath, buildInkPath, dashFor, imageFrame, NOTE_W, NOTE_PAD, SEMI,
+  localBounds, pageBounds, textLayout, noteLayout, geoLabelLayout, lineBaseline, lineRuns,
+  buildGeoPath, buildInkPath, dashFor, imageFrame, urlBadgeAt, NOTE_W, NOTE_PAD, SEMI,
 } from './shapes.js'
 import { boundsUnion, boundsExpand, traceSmooth } from './geometry.js'
 
@@ -49,12 +49,37 @@ const strokeAttrs = (color, dash, w) => ({
   'stroke-dasharray': dashFor(dash, w)?.map(n).join(' '),
 })
 
-// text lines as tspans, each on its own baseline
-const textLines = (lines, x, y0, lh) =>
-  lines.map((l, i) => tag('tspan', { x: n(x), y: n(y0 + i * lh) }, esc(l.text))).join('')
-const textAttrs = (font, fontSize, color, anchor) => ({
-  'font-family': font, 'font-size': n(fontSize), 'font-weight': 500, fill: color, 'text-anchor': anchor, 'xml:space': 'preserve',
-})
+// A block of laid-out text: lines of tspans, run by run, so bold, italic,
+// code, links, underlines and strikes come through; highlights are bands
+// painted behind. `left(line)` is each line's left edge (its alignment).
+// Returns the highlight rects and the <text> element.
+const textBlockSvg = (theme, { lines, fontSize, font, lh, marks, text, left }, color, top) => {
+  const bl = lineBaseline(font, fontSize, lh)
+  let bands = ''
+  let spans = ''
+  lines.forEach((line, i) => {
+    const y = top + bl + i * lh
+    const x0 = left(line)
+    for (const r of lineRuns(text, line, marks, fontSize, font)) {
+      if (r.st.hl) bands += tag('rect', { x: n(x0 + r.x - 1), y: n(y - bl), width: n(r.w + 2), height: n(lh), fill: theme.colors.yellow.note })
+      const deco = [r.st.href || r.st.u ? 'underline' : '', r.st.s ? 'line-through' : ''].filter(Boolean).join(' ')
+      spans += tag('tspan', {
+        x: n(x0 + r.x), y: n(y),
+        'font-weight': r.st.b ? 700 : null, 'font-style': r.st.i ? 'italic' : null,
+        'font-family': r.st.code ? "'SF Mono', ui-monospace, Menlo, monospace" : null,
+        'text-decoration': deco || null,
+      }, esc(r.str))
+    }
+  })
+  return bands + tag('text', { 'font-family': font, 'font-size': n(fontSize), 'font-weight': 500, fill: color, 'xml:space': 'preserve' }, spans)
+}
+const urlBadgeSvg = (theme, shape, color) => {
+  const b = urlBadgeAt(shape)
+  if (!b) return ''
+  return tag('g', { stroke: color, 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+    tag('circle', { cx: n(b.x), cy: n(b.y), r: b.r, fill: theme.handleFill }) +
+    tag('path', { d: `M${n(b.x - 3.5)} ${n(b.y + 3.5)}L${n(b.x + 3.5)} ${n(b.y - 3.5)}M${n(b.x - 1)} ${n(b.y - 3.5)}L${n(b.x + 3.5)} ${n(b.y - 3.5)}L${n(b.x + 3.5)} ${n(b.y + 1)}`, fill: 'none' }))
+}
 
 // ---- one shape ------------------------------------------------------------
 
@@ -101,8 +126,7 @@ export function shapeToSvg(shape, { theme, store, defs }) {
       body = tag('path', { d: path.d, ...strokeAttrs(col.stroke, p.dash, SIZES[p.size]), fill })
       const lay = geoLabelLayout(shape)
       if (lay) {
-        const y0 = p.h / 2 - lay.textH / 2 + lineBaseline(lay.font, lay.fontSize, lay.lh)
-        body += tag('text', textAttrs(lay.font, lay.fontSize, col.stroke, 'middle'), textLines(lay.lines, p.w / 2, y0, lay.lh))
+        body += textBlockSvg(theme, { ...lay, marks: p.labelMarks, text: p.label, left: (line) => p.w / 2 - line.w / 2 }, col.stroke, p.h / 2 - lay.textH / 2)
       }
       break
     }
@@ -126,9 +150,8 @@ export function shapeToSvg(shape, { theme, store, defs }) {
     case 'text': {
       const l = textLayout(shape)
       const align = p.align || 'start'
-      const anchor = align === 'middle' ? 'middle' : align === 'end' ? 'end' : 'start'
-      const ax = align === 'middle' ? l.w / 2 : align === 'end' ? l.w : 0
-      body = tag('text', textAttrs(l.font, l.fontSize, col.stroke, anchor), textLines(l.lines, ax, lineBaseline(l.font, l.fontSize, l.lh), l.lh))
+      const left = (line) => (align === 'middle' ? l.w / 2 - line.w / 2 : align === 'end' ? l.w - line.w : 0)
+      body = textBlockSvg(theme, { ...l, marks: p.marks, text: p.text, left }, col.stroke, 0)
       break
     }
     case 'note': {
@@ -136,10 +159,10 @@ export function shapeToSvg(shape, { theme, store, defs }) {
       const s = p.scale || 1
       defs.set('qd-note-shadow', tag('filter', { id: 'qd-note-shadow', x: '-20%', y: '-20%', width: '140%', height: '140%' },
         tag('feDropShadow', { dx: 0, dy: 4, stdDeviation: 5, 'flood-color': 'rgba(20,16,8,0.22)' })))
-      const y0 = Math.max(NOTE_PAD, l.boxH / 2 - l.textH / 2) + lineBaseline(l.font, l.fontSize, l.lh)
       body = tag('g', { transform: s !== 1 ? `scale(${n(s)})` : null },
         tag('rect', { width: NOTE_W, height: n(l.boxH), rx: 6, fill: col.note, filter: 'url(#qd-note-shadow)' }) +
-        tag('text', textAttrs(l.font, l.fontSize, theme.noteText, 'middle'), textLines(l.lines, NOTE_W / 2, y0, l.lh)))
+        textBlockSvg(theme, { ...l, marks: p.marks, text: p.text, left: (line) => NOTE_W / 2 - line.w / 2 }, theme.noteText, Math.max(NOTE_PAD, l.boxH / 2 - l.textH / 2)) +
+        urlBadgeSvg(theme, shape, theme.noteText))
       break
     }
     case 'image': {
@@ -159,6 +182,7 @@ export function shapeToSvg(shape, { theme, store, defs }) {
     default:
       return ''
   }
+  if (p.url && shape.type !== 'note') body += urlBadgeSvg(theme, shape, col.stroke)
   // the shape's own frame: rotate about its centre, then its origin — the
   // same order the canvas applies
   const lb = localBounds(shape)
