@@ -14,6 +14,7 @@ export {
   markAt, hasMark, setMark, normalizeMarks,
 } from './shapes.js'
 export { openUrl, normalizeText } from './editor.js'
+export { TextSurface } from './textedit.js'
 export { strokeOutline } from './freehand.js'
 export { sceneToSvg, shapeToSvg } from './svg.js'
 export { BINDABLE, anchorAt, anchorPoint, boundTerminals, rebindArrow, outlinePolygon } from './bindings.js'

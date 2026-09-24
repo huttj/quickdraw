@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Editor, TOOLS } from '../src/editor.js'
 import { createQuickdraw } from '../src/index.js'
-import { pageBounds, textLayout, lineRuns } from '../src/shapes.js'
+import { pageBounds, textLayout, lineRuns, localBounds } from '../src/shapes.js'
 
 // Fake pointer events fed straight to the editor's handlers. The container
 // sits at (0,0) in jsdom, so clientX/Y are screen coords directly.
@@ -257,11 +257,11 @@ describe('selection & transforms', () => {
 })
 
 describe('text & notes', () => {
-  it('placing text opens a textarea; typing commits; empty evaporates', () => {
+  it('placing text opens the text surface; typing commits; empty evaporates', () => {
     editor.setTool('text')
     drag(editor, [[50, 50]])
-    const ta = container.querySelector('textarea.qd-text-edit')
-    expect(ta).toBeTruthy()
+    expect(container.querySelector('.qd-text-edit')).toBeTruthy()
+    const ta = editor.editing.textarea // the surface: a textarea's API over a contenteditable
     ta.value = 'hello world'
     ta.dispatchEvent(new window.Event('input'))
     editor._commitText()
@@ -281,7 +281,7 @@ describe('text & notes', () => {
     drag(editor, [[50, 50]])
     const note = editor.store.shapes().find((s) => s.type === 'note')
     expect(note.props.color).toBe('yellow')
-    const ta = container.querySelector('textarea.qd-text-edit')
+    const ta = editor.editing.textarea
     ta.value = 'sticky'
     ta.dispatchEvent(new window.Event('input'))
     editor._commitText()
@@ -1922,5 +1922,46 @@ describe('formatting while editing', () => {
     expect(bar.style.display).toBe('none')
     board.destroy()
     c2.remove()
+  })
+})
+
+describe('editing in place', () => {
+  it('a rotated shape is edited at its angle: the surface turns about the shape centre', () => {
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 100, y: 100, rot: 0.5, z: 1, props: { text: 'tilted', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.setTool('select')
+    editor.editShapeText('t')
+    const st = editor.editing.textarea.style
+    expect(st.transform).toBe('rotate(0.5rad)')
+    const lb = localBounds(editor.store.get('t'))
+    expect(st.transformOrigin).toBe(`${lb.w / 2}px ${lb.h / 2}px`)
+    editor._commitText()
+    // a note's surface is inset by its padding, so the pivot is offset back to the note's centre
+    editor.store.put({ id: 'n', typeName: 'shape', type: 'note', x: 0, y: 0, rot: 1, z: 2, props: { text: 'n', color: 'yellow', size: 'm', font: 'draw', scale: 1 } })
+    editor.editShapeText('n')
+    const ns = editor.editing.textarea.style
+    expect(ns.transform).toBe('rotate(1rad)')
+    expect(parseFloat(ns.transformOrigin)).toBeCloseTo(100 - 20) // centre x minus the 20px inset
+    editor._commitText()
+    // unrotated: no transform
+    editor.store.put({ id: 'p', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 3, props: { text: 'flat', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.editShapeText('p')
+    expect(editor.editing.textarea.style.transform).toBe('')
+    editor._commitText()
+  })
+
+  it('a formatting shortcut with the caret alone survives its own key-up', () => {
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'ab', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.setTool('select')
+    editor.editShapeText('t')
+    const ta = editor.editing.textarea
+    ta.setSelectionRange(2, 2) // moved without any event, as a click would
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', metaKey: true, bubbles: true, cancelable: true }))
+    ta.dispatchEvent(new Event('keyup'))
+    expect(editor.editingStyle().i).toBe(true)
+    ta.value = 'abc'
+    ta.setSelectionRange(3, 3)
+    ta.dispatchEvent(new Event('input'))
+    expect(editor.store.get('t').props.marks).toEqual([{ from: 2, to: 3, i: true }])
+    editor._commitText()
   })
 })

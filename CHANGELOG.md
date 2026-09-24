@@ -33,11 +33,22 @@ versioned in lockstep.
   both (Shift keeps proportions); the text rewraps and the type keeps its
   size; a note never gets shorter than its words. Stored as `props.w` /
   `props.h` (absent = the classic square).
-- **Text formatting.** While editing, ⌘B / ⌘I / ⌘U, ⇧⌘X (strike), ⌘E
-  (code), ⇧⌘H (highlight) and ⌘K (link) apply to the selection, or to what
-  you type next; a small bar above the text offers the same. Marks were
-  already drawn (they came in with tldraw pastes); now they can be made.
-  `editor.toggleMark`, `setLink`, `editingStyle` for custom UIs.
+- **Text formatting, shown as you type.** The text editor is now a
+  contenteditable surface styled like the canvas, so bold, italic,
+  underline, strike, code, highlights and links appear the moment you
+  apply them. ⌘B / ⌘I / ⌘U, ⇧⌘X (strike), ⌘E (code), ⇧⌘H (highlight) and
+  ⌘K (link) apply to the selection, or to what you type next; a small bar
+  above the text offers the same. Pastes into the editor land as plain
+  text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
+  `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
+  a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Text is edited in place.** A rotated text, note or label is edited at
+  its angle: the surface turns about the shape's centre like the canvas
+  does, instead of snapping flat. The board no longer scrolls to chase a
+  caret that wanders past its edge.
+- **Links open on release.** A press on a linked shape or word opens it
+  when the button comes up without a drag, so a linked shape can still be
+  dragged around.
 - **The action bar is for fingers.** The undo / redo / duplicate / delete
   pill now shows only where the primary input is touch; with a mouse and
   keyboard every one of those is a key away. `actions: 'always' | 'never'`
