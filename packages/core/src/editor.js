@@ -1674,7 +1674,7 @@ export class Editor {
   // text takes a side pull as its wrap width (see scaleShape).
   _resizeScales(handle, sx, sy, shapes, e) {
     const corner = handle.length === 2
-    const whole = shapes.every((sh) => ['image', 'text'].includes(sh.type))
+    const whole = shapes.every((sh) => ['image', 'text', 'note'].includes(sh.type))
     if (corner && (e.shiftKey || whole)) { const s = Math.max(sx, sy); return [s, s] }
     return [sx, sy]
   }
@@ -1704,7 +1704,7 @@ export class Editor {
         // shape origin maps through the anchor like any other point — except
         // text pulled by its top edge, whose new height (the type re-wraps)
         // is measured so the bottom edge stays exactly put
-        const y = scaled.type === 'text' && handle === 't' ? ay - localBounds(scaled).h : ay + (orig.y - ay) * sy
+        const y = (scaled.type === 'text' || scaled.type === 'note') && handle === 't' ? ay - localBounds(scaled).h : ay + (orig.y - ay) * sy
         this.store.put({ ...scaled, x: ax + (orig.x - ax) * sx, y })
       }
     })
@@ -2031,8 +2031,8 @@ export class Editor {
       const z = this._hitRotateZone(one, b, sx, sy)
       if (z) return z
     }
-    // a text box's whole top and bottom edge is its type-size handle
-    if (one?.type === 'text') {
+    // a text box's (or a sticky's) whole top and bottom edge is its type-size handle
+    if (one?.type === 'text' || one?.type === 'note') {
       const p = this.screenToPage(sx, sy)
       const l = one.rot ? toLocal(one, p.x, p.y) : { x: p.x - one.x, y: p.y - one.y }
       const lb = localBounds(one)

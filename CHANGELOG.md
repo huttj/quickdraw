@@ -29,10 +29,9 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
-- **Sticky notes resize freely.** Sides set the width or height, corners
-  both (Shift keeps proportions); the text rewraps and the type keeps its
-  size; a note never gets shorter than its words. Stored as `props.w` /
-  `props.h` (absent = the classic square).
+- **Sticky notes have a width.** `props.w` (absent = the classic 200) sets
+  how wide a note is; `props.h` a minimum height (tldraw's growY comes
+  across as that). A note never gets shorter than its words.
 - **Text formatting, shown as you type.** The text editor is now a
   contenteditable surface styled like the canvas, so bold, italic,
   underline, strike, code, highlights and links appear the moment you
@@ -42,6 +41,10 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Sticky notes handle like text.** S / M / L / XL are the same type sizes
+  as a text shape's (they used to run a step smaller). A side pull sets
+  the width and the words rewrap; the whole top or bottom edge scales the
+  type, the sticky growing with it; a corner scales it whole.
 - **⌘= / ⌘- / ⌘0 always zoom the board**, wherever focus is on the page —
   the browser's own zoom never fires. A field that isn't the board's keeps
   its keys.
