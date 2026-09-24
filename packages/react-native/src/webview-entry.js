@@ -44,6 +44,7 @@ const handlers = {
       themeToggle: m.themeToggle !== false,
       gridControl: m.gridControl !== false,
       minimap: m.minimap !== false,
+      actions: m.actions || 'touch',
       watermark: m.watermark !== false,
       styles: m.styles || undefined,
       onSave: async (blob, background) => {

@@ -46,6 +46,8 @@ export interface QuickdrawProps {
   gridControl?: boolean
   /** Show the minimap in the top-right corner (default true). */
   minimap?: boolean
+  /** When the undo/redo/duplicate/delete pill shows: 'touch' (default) | 'always' | 'never'. */
+  actions?: 'touch' | 'always' | 'never'
   /** Show the corner "Quickdraw" mark (default true). */
   watermark?: boolean
   snapshot?: Snapshot

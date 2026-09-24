@@ -29,6 +29,10 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **The action bar is for fingers.** The undo / redo / duplicate / delete
+  pill now shows only where the primary input is touch; with a mouse and
+  keyboard every one of those is a key away. `actions: 'always' | 'never'`
+  (core, React, React Native, or `ui.setOptions`) overrides.
 - **Minimap.** The whole drawing at a glance in the top-right corner:
   shapes as soft blocks, the viewport as a frame. Click or drag to put the
   view there, scroll on it to zoom; buttons over its corner zoom to fit and fold it. Hidden on

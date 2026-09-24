@@ -73,6 +73,14 @@ Grid spacing adapts to the zoom — doubling and halving around a 40&nbsp;px
 page step, with majors every fifth line — and fades in rather than popping.
 Grids travel into PNG exports that keep the paper background.
 
+## The action bar
+
+The vertical pill of undo, redo, duplicate and delete is for fingers: it
+shows only where the primary input is touch, since with a mouse and
+keyboard every one of those is a shortcut away. `actions: 'always'` keeps
+it on every device, `'never'` drops it, and `ui.setOptions({ actions })`
+flips it live (the `actions` prop in React and React Native).
+
 ## The minimap
 
 A small map of the whole drawing sits in the top-right corner: shapes as

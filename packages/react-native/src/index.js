@@ -22,7 +22,8 @@ export { createBridge, encodeDispatch } from './bridge.js'
  *   hideUi       hide the stock toolbar
  *   themeToggle  show the theme switch in the board menu (default true)
  *   gridControl  show the grid switch in the board menu (default true)
- *   minimap      show the minimap in the bottom-left corner (default true)
+ *   minimap      show the minimap in the top-right corner (default true)
+ *   actions      when the undo/redo/duplicate/delete pill shows: 'touch' (default) | 'always' | 'never'
  *   watermark    show the corner "Quickdraw" mark (default true)
  *   snapshot     serialized document loaded on mount
  *   styles       initial pen styles { color, size, dash, fill, font }
@@ -52,6 +53,7 @@ export const Quickdraw = forwardRef(function Quickdraw(props, ref) {
     themeToggle = true,
     gridControl = true,
     minimap = true,
+    actions = 'touch',
     watermark = true,
     snapshot,
     styles,
@@ -89,7 +91,7 @@ export const Quickdraw = forwardRef(function Quickdraw(props, ref) {
   // initial props for the init message (read once, on 'ready')
   const initRef = useRef(null)
   if (!initRef.current) {
-    initRef.current = { theme, grid, readonly, hideUi, themeToggle, gridControl, minimap, watermark, snapshot, styles }
+    initRef.current = { theme, grid, readonly, hideUi, themeToggle, gridControl, minimap, actions, watermark, snapshot, styles }
   }
 
   const onMessage = (e) => {
