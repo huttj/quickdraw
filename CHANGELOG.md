@@ -42,6 +42,9 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Double-click picks the word.** Double-clicking text opens it for editing
+  with the word under the pointer selected (just the caret, on whitespace);
+  a third quick click selects everything. Enter still selects all.
 - **Text is edited in place.** A rotated text, note or label is edited at
   its angle: the surface turns about the shape's centre like the canvas
   does, instead of snapping flat. The board no longer scrolls to chase a

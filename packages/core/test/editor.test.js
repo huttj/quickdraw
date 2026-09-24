@@ -1965,3 +1965,48 @@ describe('editing in place', () => {
     editor._commitText()
   })
 })
+
+describe('double and triple click into text', () => {
+  const put = (text) => editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 100, y: 100, rot: 0, z: 1, props: { text, color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+
+  it('a double-click selects the word under it; on whitespace it places the caret; Enter still selects all', async () => {
+    const { textLayout, lineRuns } = await import('../src/shapes.js')
+    put('alpha beta gamma')
+    editor.setTool('select')
+    const lay = textLayout(editor.store.get('t'))
+    const runs = lineRuns('alpha beta gamma', lay.lines[0], undefined, lay.fontSize, lay.font)
+    const cw = runs[0].w / 'alpha beta gamma'.length // the fake measurer is monospaced
+    // into "beta": chars 6..10
+    editor._dblClick({ clientX: 100 + cw * 7.5, clientY: 100 + lay.lh / 2 })
+    let ta = editor.editing.textarea
+    expect([ta.selectionStart, ta.selectionEnd]).toEqual([6, 10])
+    editor._commitText()
+    // on the space after "alpha": a caret, nothing selected
+    editor._dblClick({ clientX: 100 + cw * 5.4, clientY: 100 + lay.lh / 2 })
+    ta = editor.editing.textarea
+    expect([ta.selectionStart, ta.selectionEnd]).toEqual([5, 5])
+    editor._commitText()
+    // Enter: everything
+    editor.setSelection(['t'])
+    press(editor, 'Enter')
+    ta = editor.editing.textarea
+    expect([ta.selectionStart, ta.selectionEnd]).toEqual([0, 16])
+    editor._commitText()
+  })
+
+  it('a third quick click on the same spot selects everything; a later click is just a click', () => {
+    put('alpha beta gamma')
+    editor.setTool('select')
+    editor._dblClick({ clientX: 130, clientY: 110 })
+    const ta = editor.editing.textarea
+    expect(ta.selectionEnd - ta.selectionStart).toBeLessThan(16)
+    const down = (x, y) => { const e = new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, cancelable: true }); ta.el.dispatchEvent(e); return e }
+    const e1 = down(131, 111)
+    expect(e1.defaultPrevented).toBe(true)
+    expect([ta.selectionStart, ta.selectionEnd]).toEqual([0, 16])
+    // the window is spent: the next press is an ordinary caret placement
+    const e2 = down(131, 111)
+    expect(e2.defaultPrevented).toBe(false)
+    editor._commitText()
+  })
+})

@@ -8,7 +8,7 @@ import { themeOf, SIZES, FONT_SIZES, GEO_IDS, COLOR_IDS, GRID_IDS, GRID_STEP, GR
 import {
   localBounds, pageBounds, toLocal, drawShape, hitShape, marqueeHits,
   scaleShape, textLayout, noteLayout, NOTE_W, sampleLinePts, imageFrame,
-  mapMarks, textLinkAt, urlBadgeAt, invalidateTextLayout, markAt, hasMark, setMark,
+  mapMarks, textLinkAt, textHitAt, urlBadgeAt, invalidateTextLayout, markAt, hasMark, setMark,
 } from './shapes.js'
 import { boundsUnion, boundsExpand, boundsContain, clamp, rotWith } from './geometry.js'
 import { sceneToSvg } from './svg.js'
@@ -1237,7 +1237,10 @@ export class Editor {
 
   // The text surface: a real textarea floated over the canvas, styled to
   // match the render, so editing feels native (IME, selection, caret).
-  _startTextEdit(id, field, { fresh = false } = {}) {
+  // at: the page point of the double-click that opened the edit — the word
+  // there gets selected (the caret lands there on whitespace); a third
+  // quick click selects everything. Without it (Enter), all is selected.
+  _startTextEdit(id, field, { fresh = false, at = null } = {}) {
     this._commitText()
     const shape = this.store.get(id)
     if (!shape) return
@@ -1312,11 +1315,43 @@ export class Editor {
       if (key) { e.preventDefault(); this.toggleMark(key); return }
       if (k === 'k' && !e.shiftKey) { e.preventDefault(); this.promptLink() }
     })
-    ta.addEventListener('pointerdown', (e) => e.stopPropagation())
+    ta.addEventListener('pointerdown', (e) => {
+      e.stopPropagation()
+      // the third click of a triple-click lands here, on the surface that
+      // the double-click just opened: it selects everything
+      if (ed.openedAt && performance.now() - ed.openedAt < 500) {
+        const s = this._evPoint(e)
+        if (Math.hypot(s.x - ed.openedAtPoint.x, s.y - ed.openedAtPoint.y) < 12) {
+          e.preventDefault()
+          ta.select()
+          this.emit('edit')
+        }
+      }
+      ed.openedAt = 0
+    })
     ta.addEventListener('blur', () => this._commitText())
     this._layoutTextEditor()
     ta.focus()
-    if (!fresh) ta.select()
+    if (at && !fresh) {
+      const l = toLocal(shape, at.x, at.y)
+      const text = ta.value
+      const hit = textHitAt(shape, l.x, l.y)
+      if (!hit) ta.select()
+      else if (hit.index >= 0 && /\S/.test(text[hit.index])) {
+        // the word the point is on
+        let s = hit.index, e = hit.index + 1
+        while (s > 0 && /\S/.test(text[s - 1])) s--
+        while (e < text.length && /\S/.test(text[e])) e++
+        ta.setSelectionRange(s, e)
+        ed.caret = s
+      } else {
+        // whitespace, or past the end: just the caret
+        ta.setSelectionRange(hit.offset, hit.offset)
+        ed.caret = hit.offset
+      }
+      ed.openedAt = performance.now()
+      ed.openedAtPoint = this.pageToScreen(at.x, at.y)
+    } else if (!fresh) ta.select()
     this.emit('edit')
     this.requestRender()
   }
@@ -2054,12 +2089,12 @@ export class Editor {
       }
       if (hit.type === 'text' || hit.type === 'note') {
         this.setSelection([hit.id])
-        this._startTextEdit(hit.id, 'text')
+        this._startTextEdit(hit.id, 'text', { at: p })
         return
       }
       if (hit.type === 'geo') {
         this.setSelection([hit.id])
-        this._startTextEdit(hit.id, 'label')
+        this._startTextEdit(hit.id, 'label', { at: p })
         return
       }
       if (hit.type === 'image') {

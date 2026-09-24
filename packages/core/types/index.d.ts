@@ -178,6 +178,10 @@ export function hasMark(marks: TextMark[] | undefined, from: number, to: number,
 export function setMark(marks: TextMark[] | undefined, from: number, to: number, key: keyof TextMark, on: boolean, value?: boolean | string): TextMark[]
 /** Sorted, non-overlapping runs with adjacent equal ones merged. */
 export function normalizeMarks(marks: TextMark[] | undefined): TextMark[]
+/** What's under a shape-local point in a text block: the nearest caret `offset` and the character `index` the point is over (-1 past the end). */
+export function textHitAt(shape: ShapeRecord, lx: number, ly: number): { offset: number; index: number } | null
+/** The caret offset a click at a shape-local point lands at, or null. */
+export function textOffsetAt(shape: ShapeRecord, lx: number, ly: number): number | null
 /** The link under a shape-local point on a text, note, or geo label, or null. */
 export function textLinkAt(shape: ShapeRecord, lx: number, ly: number): string | null
 /** The link badge a shape with `props.url` wears (local centre and radius), or null. */
