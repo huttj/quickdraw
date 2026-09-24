@@ -1776,7 +1776,7 @@ describe('minimap', () => {
     const centre = ed.screenToPage(450, 300)
     expect(centre.x).toBeGreaterThan(2000)
     expect(centre.y).toBeGreaterThan(1500)
-    // the chevron folds it
+    // the button over its corner folds it
     mm.querySelector('.qd-minimap-toggle').click()
     expect(mm.classList.contains('qd-folded')).toBe(true)
     board.destroy()

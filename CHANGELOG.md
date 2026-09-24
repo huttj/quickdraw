@@ -29,9 +29,9 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
-- **Minimap.** The whole drawing at a glance in the bottom-left corner:
+- **Minimap.** The whole drawing at a glance in the top-right corner:
   shapes as soft blocks, the viewport as a frame. Click or drag to put the
-  view there, scroll on it to zoom, the chevron folds it away. Hidden on
+  view there, scroll on it to zoom; a button over its corner folds it. Hidden on
   narrow boards; `minimap: false` (or the React prop) drops it.
 - **tldraw's fonts, bundled.** `@quickdrawjs/core/fonts.css` self-hosts the
   faces tldraw uses — Shantell Sans for hand-drawn text, IBM Plex Sans,
