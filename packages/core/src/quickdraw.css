@@ -433,10 +433,19 @@
 .qd-minimap-canvas { display: block; width: 180px; height: 120px; cursor: grab; }
 .qd-minimap-canvas.qd-dragging { cursor: grabbing; }
 .qd-minimap.qd-folded .qd-minimap-canvas { display: none; }
-.qd-minimap-toggle {
+/* the map's own buttons — zoom to fit, fold — float over its top-right
+   corner and show on hover */
+.qd-minimap-tools {
   position: absolute;
   top: 4px;
   right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.qd-minimap:hover .qd-minimap-tools, .qd-minimap-tools:focus-within { opacity: 1; }
+.qd-minimap-toggle, .qd-minimap-fit {
   width: 22px;
   height: 22px;
   border: none;
@@ -448,16 +457,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
+  transition: background 140ms ease, color 140ms ease;
 }
-.qd-minimap-toggle svg { width: 14px; height: 14px; }
-.qd-minimap:hover .qd-minimap-toggle, .qd-minimap-toggle:focus-visible { opacity: 1; }
-/* hovering the button itself lights it up like an active dock tool — a
-   translucent tint here would read as the button fading into the map */
-.qd-minimap-toggle:hover { background: var(--qd-on-bg); color: var(--qd-on-ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
-/* folded: the button is the whole panel */
-.qd-minimap.qd-folded .qd-minimap-toggle { position: static; opacity: 1; width: 30px; height: 30px; border-radius: 11px; }
+.qd-minimap-toggle svg, .qd-minimap-fit svg { width: 14px; height: 14px; }
+/* hovering a button lights it up like an active dock tool — a translucent
+   tint here would read as the button fading into the map */
+.qd-minimap-toggle:hover, .qd-minimap-fit:hover { background: var(--qd-on-bg); color: var(--qd-on-ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
+/* folded: the fold button is the whole panel */
+.qd-minimap.qd-folded .qd-minimap-tools { position: static; opacity: 1; }
+.qd-minimap.qd-folded .qd-minimap-fit { display: none; }
+.qd-minimap.qd-folded .qd-minimap-toggle { width: 30px; height: 30px; border-radius: 11px; }
 
 /* ---- watermark ---- */
 /* Quiet by default, legible on hover; sits under the chrome so popovers and

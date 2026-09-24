@@ -1776,6 +1776,10 @@ describe('minimap', () => {
     const centre = ed.screenToPage(450, 300)
     expect(centre.x).toBeGreaterThan(2000)
     expect(centre.y).toBeGreaterThan(1500)
+    // its fit button brings the drawing into view (animated, so watch the call)
+    const fit = vi.spyOn(ed, 'fitContent')
+    mm.querySelector('.qd-minimap-fit').click()
+    expect(fit).toHaveBeenCalledWith({ animate: 220 })
     // the button over its corner folds it
     mm.querySelector('.qd-minimap-toggle').click()
     expect(mm.classList.contains('qd-folded')).toBe(true)
