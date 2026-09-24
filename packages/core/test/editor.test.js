@@ -1981,6 +1981,25 @@ describe('formatting while editing', () => {
   })
 })
 
+describe('ruled strokes', () => {
+  it('shift holds a freehand stroke straight, snapped to 15°, and freehand resumes on release', () => {
+    editor.setTool('draw')
+    editor._pointerDown({ ...ev(100, 100), target: editor.canvas })
+    editor._pointerMove({ ...ev(110, 104), target: editor.canvas })
+    editor._pointerMove({ ...ev(200, 112, { shiftKey: true }), target: editor.canvas }) // ~7°: snaps to level
+    editor._pointerMove({ ...ev(300, 118, { shiftKey: true }), target: editor.canvas })
+    const [s] = editor.store.shapes()
+    let pts = s.props.pts
+    expect(pts.length).toBe(9) // origin, the freehand point, then one ruled end
+    expect(pts[7]).toBeCloseTo(4) // level with where shift went down (y of the last freehand point)
+    expect(pts[6]).toBeGreaterThan(190)
+    editor._pointerMove({ ...ev(320, 160), target: editor.canvas }) // shift released: the hand is back
+    pts = editor.store.get(s.id).props.pts
+    expect(pts.length).toBe(12)
+    editor._pointerUp({ ...ev(320, 160), target: editor.canvas })
+  })
+})
+
 describe('locked shapes', () => {
   it('the pointer never picks up a locked shape: no press, marquee or select-all; the eraser still can', () => {
     editor.store.put({ id: 'l', typeName: 'shape', type: 'geo', x: 100, y: 100, rot: 0, z: 1, props: { geo: 'rectangle', w: 80, h: 60, color: 'black', size: 'm', dash: 'solid', fill: 'solid', font: 'draw' } })

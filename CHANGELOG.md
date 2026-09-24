@@ -41,6 +41,9 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Shift rules a stroke.** Hold Shift while drawing with the pencil or
+  the highlighter and the stroke runs straight from where Shift went down
+  to the pointer, snapped to 15°; let go and freehand resumes.
 - **Locked shapes.** `editor.shapeLocked = (shape) => boolean` keeps the
   pointer off a shape: no press, drag, marquee, double-click or context
   menu. It still draws, its links still open, and the eraser still reaches
