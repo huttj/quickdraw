@@ -61,7 +61,7 @@ versioned in lockstep.
   (core, React, React Native, or `ui.setOptions`) overrides.
 - **Minimap.** The whole drawing at a glance in the top-right corner:
   shapes as soft blocks, the viewport as a frame. Click or drag to put the
-  view there, scroll on it to zoom; buttons over its corner zoom to fit and fold it. Hidden on
+  view there, scroll on it to zoom; buttons over its corners zoom to fit and close it. Hidden on
   narrow boards; `minimap: false` (or the React prop) drops it.
 - **tldraw's fonts, bundled.** `@quickdrawjs/core/fonts.css` self-hosts the
   faces tldraw uses — Shantell Sans for hand-drawn text, IBM Plex Sans,
