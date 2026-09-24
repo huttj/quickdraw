@@ -383,7 +383,7 @@ export class Editor {
         dash: ['draw', 'geo', 'arrow', 'line'],
         fill: ['geo'],
         font: ['text', 'note', 'geo'],
-        align: ['text'],
+        align: ['text', 'note'],
       }
       this.store.transact(() => {
         for (const id of this.selection) {
@@ -402,9 +402,11 @@ export class Editor {
       const s = this.store.get(id)
       if (!s) continue
       for (const k of ['color', 'size', 'dash', 'fill', 'font', 'align']) {
-        if (s.props[k] === undefined) continue
-        if (!(k in out)) out[k] = s.props[k]
-        else if (out[k] !== s.props[k]) out[k] = null
+        // a note without an align is a centred note
+        const v = k === 'align' && s.type === 'note' ? (s.props.align ?? 'middle') : s.props[k]
+        if (v === undefined) continue
+        if (!(k in out)) out[k] = v
+        else if (out[k] !== v) out[k] = null
       }
     }
     return { ...this.styles, ...out }
@@ -746,6 +748,23 @@ export class Editor {
     if (this.readonly) return
     if (e.target !== this.canvas && e.target !== this.overlay && e.target !== this.container) return
     if (e.button === 2) return
+    // a finger on the board while typing pans (or pinches) and keeps the text
+    // open — the keyboard hides half the screen; a still tap commits as before
+    if (this.editing && e.pointerType === 'touch') {
+      e.preventDefault() // the text keeps its focus and keyboard
+      const s = this._evPoint(e)
+      this._pointers.set(e.pointerId, s)
+      this._ptrType.set(e.pointerId, e.pointerType)
+      try { this.container.setPointerCapture(e.pointerId) } catch {}
+      const pp = this._pinchPoints()
+      if (pp.length === 2) {
+        const [a, b] = pp
+        this.session = { type: 'pinch', dist: Math.hypot(a.x - b.x, a.y - b.y), center: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, cam: { ...this.camera }, editing: true }
+      } else if (pp.length < 2) {
+        this.session = { type: 'panning', last: s, pressAt: s, editing: true }
+      }
+      return
+    }
     if (this.editing) this._commitText()
     this.container.focus({ preventScroll: true })
     const s = this._evPoint(e)
@@ -785,8 +804,19 @@ export class Editor {
 
     const p = this.screenToPage(s.x, s.y)
     if (e.button === 1 || this.spaceHeld || this.tool === 'hand') {
-      this.session = { type: 'panning', last: s }
+      this.session = { type: 'panning', last: s, pressAt: s }
       this._syncCursor('grabbing')
+      // a still finger opens the context menu here too
+      if (e.pointerType === 'touch') {
+        const ss = this.session
+        this._clearPressTimer()
+        this._pressTimer = setTimeout(() => {
+          this._pressTimer = 0
+          if (this.session !== ss) return
+          this.session = null
+          this._openContextMenu(s)
+        }, LONG_PRESS)
+      }
       return
     }
 
@@ -890,10 +920,16 @@ export class Editor {
     // a palm lift in pen mode must not end the pen's live stroke
     if (this.penMode && e.pointerType === 'touch' && ss.type !== 'panning') return
     switch (ss.type) {
-      case 'panning':
+      case 'panning': {
         this.session = null
         this._syncCursor()
+        // a still tap beside the text while typing ends the edit; a drag only moved the view
+        if (ss.editing && ss.pressAt) {
+          const s = this._evPoint(e)
+          if (Math.hypot(s.x - ss.pressAt.x, s.y - ss.pressAt.y) < 6) this._commitText()
+        }
         return
+      }
       case 'drawing': return this._endDraw()
       case 'erasing': return this._endErase()
       case 'lasering': return this._endLaser()
@@ -1378,7 +1414,7 @@ export class Editor {
       oy = yStart * s
       w = (lay.boxW - 40) * s
       h = lay.textH * s
-      align = 'center'
+      align = shape.props.align === 'start' ? 'left' : shape.props.align === 'end' ? 'right' : 'center'
       ta.style.font = `500 ${lay.fontSize * s * z}px ${lay.font}`
       ta.style.lineHeight = lay.lh * s * z + 'px'
     } else if (shape.type === 'geo' && ed.field === 'label') {
@@ -1499,8 +1535,8 @@ export class Editor {
     ed.textarea.remove()
     if (shape) {
       const value = ed.field === 'label' ? shape.props.label : shape.props.text
-      if (!String(value || '').trim() && (shape.type === 'text' || (shape.type === 'note' && ed.fresh))) {
-        // empty text evaporates
+      if (!String(value || '').trim() && (shape.type === 'text' || shape.type === 'note')) {
+        // empty text (and an emptied note) evaporates
         this.store.remove([ed.id])
         this.selection.delete(ed.id)
       }

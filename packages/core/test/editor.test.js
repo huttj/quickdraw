@@ -276,6 +276,56 @@ describe('text & notes', () => {
     expect(editor.store.shapes().length).toBe(1)
   })
 
+  it('an emptied note evaporates like emptied text', () => {
+    editor.setTool('note')
+    drag(editor, [[50, 50]])
+    const note = editor.store.shapes().find((s) => s.type === 'note')
+    const ta = editor.editing.textarea
+    ta.value = 'kept for a moment'
+    ta.dispatchEvent(new window.Event('input'))
+    editor._commitText()
+    expect(editor.store.get(note.id).props.text).toBe('kept for a moment')
+    editor.editShapeText(note.id)
+    editor.editing.textarea.value = '   '
+    editor.editing.textarea.dispatchEvent(new window.Event('input'))
+    editor._commitText()
+    expect(editor.store.get(note.id)).toBeUndefined()
+  })
+
+  it('a note takes the align style; an untouched note reads as centred', () => {
+    const id = editor.dropShape('note', { x: 0, y: 0 })
+    editor.editing.textarea.value = 'hi'
+    editor.editing.textarea.dispatchEvent(new window.Event('input'))
+    editor._commitText()
+    editor.setSelection([id])
+    expect(editor.currentStyles().align).toBe('middle')
+    editor.setStyle('align', 'start')
+    expect(editor.store.get(id).props.align).toBe('start')
+    expect(editor.currentStyles().align).toBe('start')
+  })
+
+  it('a finger on the board while typing pans and keeps the text open; a still tap commits', () => {
+    editor.setTool('text')
+    drag(editor, [[50, 50]])
+    const ta = editor.editing.textarea
+    ta.value = 'typing away'
+    ta.dispatchEvent(new window.Event('input'))
+    const id = editor.editing.id
+    const cam = { ...editor.camera }
+    const touch = (x, y) => ({ ...ev(x, y, { pointerType: 'touch' }), target: editor.canvas, preventDefault() {} })
+    editor._pointerDown(touch(300, 300))
+    expect(editor.editing?.id).toBe(id)
+    editor._pointerMove(touch(360, 340))
+    editor._pointerUp(touch(360, 340))
+    expect(editor.editing?.id).toBe(id)
+    expect(editor.camera.x).not.toBe(cam.x)
+    // a still tap elsewhere ends the edit
+    editor._pointerDown(touch(500, 500))
+    editor._pointerUp(touch(501, 500))
+    expect(editor.editing).toBe(null)
+    expect(editor.store.get(id).props.text).toBe('typing away')
+  })
+
   it('notes get the note default color when the pen is on the default ink', () => {
     editor.setTool('note')
     drag(editor, [[50, 50]])

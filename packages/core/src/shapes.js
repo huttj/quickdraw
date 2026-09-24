@@ -353,8 +353,10 @@ function textBlock(shape) {
   }
   if (shape.type === 'note') {
     const l = noteLayout(shape)
+    // notes centre their text unless told otherwise (older notes carry no align)
+    const align = p.align || 'middle'
     return { ...l, top: Math.max(NOTE_PAD, l.boxH / 2 - l.textH / 2), marks: p.marks, text: p.text, scale: p.scale || 1,
-      left: (line) => l.boxW / 2 - line.w / 2 }
+      left: (line) => (align === 'start' ? NOTE_PAD : align === 'end' ? l.boxW - NOTE_PAD - line.w : l.boxW / 2 - line.w / 2) }
   }
   if (shape.type === 'geo') {
     const l = geoLabelLayout(shape)

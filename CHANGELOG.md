@@ -41,6 +41,16 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Notes honour the align style.** Left, centre or right, like text; a
+  note without one is centred, as before. The styles panel applies it to a
+  selected note.
+- **An emptied note evaporates,** the way emptied text always has.
+- **Touch: the hand comes first.** On a touch screen the dock leads with the
+  hand tool and never drops it when the frame narrows; a still finger on the
+  hand tool opens the context menu, as it does on the pointer.
+- **Touch: pan while typing.** A finger on the board while the text surface
+  is open pans (two fingers pinch) and keeps the text open, since the
+  keyboard covers half the screen; a still tap beside it commits as before.
 - **Sticky notes handle like text.** S / M / L / XL are the same type sizes
   as a text shape's (they used to run a step smaller). A side pull sets
   the width and the words rewrap; the whole top or bottom edge scales the
