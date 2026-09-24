@@ -41,6 +41,10 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Locked shapes.** `editor.shapeLocked = (shape) => boolean` keeps the
+  pointer off a shape: no press, drag, marquee, double-click or context
+  menu. It still draws, its links still open, and the eraser still reaches
+  it. Hosts use it for other people's things.
 - **The text surface matches the canvas at every zoom.** It is laid out at
   the shape's own size and scaled by the camera with a transform. Type set
   in zoomed pixels had its line boxes snapped to whole pixels (WebKit), so

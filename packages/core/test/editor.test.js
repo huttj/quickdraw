@@ -1981,6 +1981,24 @@ describe('formatting while editing', () => {
   })
 })
 
+describe('locked shapes', () => {
+  it('the pointer never picks up a locked shape: no press, marquee or select-all; the eraser still can', () => {
+    editor.store.put({ id: 'l', typeName: 'shape', type: 'geo', x: 100, y: 100, rot: 0, z: 1, props: { geo: 'rectangle', w: 80, h: 60, color: 'black', size: 'm', dash: 'solid', fill: 'solid', font: 'draw' } })
+    editor.shapeLocked = (s) => s.id === 'l'
+    editor.setTool('select')
+    drag(editor, [[140, 130], [150, 140]])
+    expect(editor.selection.has('l')).toBe(false)
+    expect(editor.store.get('l').x).toBe(100)
+    drag(editor, [[50, 50], [300, 300]])
+    expect(editor.selection.has('l')).toBe(false)
+    editor.selectAll()
+    expect(editor.selection.has('l')).toBe(false)
+    expect(editor.hitTest(140, 130)?.id).toBe('l') // still there for the eraser and for links
+    editor.shapeLocked = null
+    editor.setSelection([])
+  })
+})
+
 describe('editing in place', () => {
   it('a rotated shape is edited at its angle: the surface turns about the shape centre', () => {
     editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 100, y: 100, rot: 0.5, z: 1, props: { text: 'tilted', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
