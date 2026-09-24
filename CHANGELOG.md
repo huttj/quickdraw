@@ -44,7 +44,8 @@ versioned in lockstep.
 - **Snapping.** A moving box settles its edges and centre lines onto the
   edges and centre lines of everything else within a few screen pixels, and
   a pulled edge does the same; a faint guide shows the line it settled on.
-  Hold ⌘ (ctrl on Windows) while dragging to move freely.
+  Only what is on screen takes part, and the nearest thing wins when
+  several line up. Hold ⌘ (ctrl on Windows) while dragging to move freely.
 - **The text surface wraps where the canvas does.** A fixed-width text's
   surface is exactly its width; it had four pixels of slack, enough for a
   word to fit on the surface that the canvas had wrapped.

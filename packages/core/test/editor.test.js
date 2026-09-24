@@ -2017,6 +2017,27 @@ describe('snapping', () => {
     editor._pointerUp({ ...ev(234, 126, { metaKey: true }), target: editor.canvas })
     expect(editor.store.get('b').x).toBe(204)
   })
+  it('the nearer neighbour wins, and off-screen things offer nothing', () => {
+    editor.store.put(box('near', 100, 100, 100, 50))
+    editor.store.put(box('far', 100, 900, 100, 50)) // its left edge lines up a hair better, but it is far below
+    editor.store.put(box('b', 300, 120, 60, 40))
+    editor.setTool('select')
+    editor.setSelection(['b'])
+    // b's left to 104: near's left (100) is 4 off, far's left (100) is 4 off too — nearness decides
+    editor._pointerDown({ ...ev(330, 140), target: editor.canvas })
+    editor._pointerMove({ ...ev(134, 140), target: editor.canvas })
+    expect(editor.session.snapGuides.find((g) => g.axis === 'x')?.from).toBe(100) // the guide spans from near's top
+    editor._pointerUp({ ...ev(134, 140), target: editor.canvas })
+    // with a real viewport, things beyond it do not take part
+    editor.viewportPageBounds = () => ({ x: 0, y: 0, w: 400, h: 400 })
+    editor.store.put(box('c', 300, 300, 60, 40))
+    editor.setSelection(['c'])
+    editor._pointerDown({ ...ev(330, 320), target: editor.canvas })
+    editor._pointerMove({ ...ev(134, 320), target: editor.canvas }) // 4px off far's left edge at y 900: far is off screen
+    expect((editor.session.snapGuides ?? []).some((g) => g.axis === 'x' && g.from === 900)).toBe(false)
+    editor._pointerUp({ ...ev(134, 320), target: editor.canvas })
+    delete editor.viewportPageBounds
+  })
   it('a pulled edge settles onto another edge', () => {
     editor.store.put(box('a', 100, 100, 100, 50))
     editor.store.put(box('b', 300, 300, 60, 40))
