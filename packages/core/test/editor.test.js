@@ -1995,6 +1995,42 @@ describe('links', () => {
   })
 })
 
+describe('snapping', () => {
+  const box = (id, x, y, w, h) => ({ id, typeName: 'shape', type: 'geo', x, y, rot: 0, z: 1, props: { geo: 'rectangle', w, h, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw' } })
+  it('a moved box settles its edge onto a neighbour\'s edge and its centre onto a centre, with a guide', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put(box('b', 300, 300, 60, 40))
+    editor.setTool('select')
+    editor.setSelection(['b'])
+    // 4px shy of a's right edge (200) and 1px off a's centre line (125): both settle
+    editor._pointerDown({ ...ev(330, 320), target: editor.canvas })
+    editor._pointerMove({ ...ev(234, 126), target: editor.canvas })
+    expect(editor.session.snapGuides.map((g) => g.axis + g.at)).toEqual(['x200', 'y125'])
+    editor._pointerUp({ ...ev(234, 126), target: editor.canvas })
+    const b = editor.store.get('b')
+    expect(b.x).toBe(200)
+    expect(b.y).toBe(105)
+    // ⌘ held: no settling
+    editor._pointerDown({ ...ev(230, 125), target: editor.canvas })
+    editor._pointerMove({ ...ev(234, 126, { metaKey: true }), target: editor.canvas })
+    expect(editor.session.snapGuides).toBe(null)
+    editor._pointerUp({ ...ev(234, 126, { metaKey: true }), target: editor.canvas })
+    expect(editor.store.get('b').x).toBe(204)
+  })
+  it('a pulled edge settles onto another edge', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put(box('b', 300, 300, 60, 40))
+    editor.setTool('select')
+    editor.setSelection(['b'])
+    editor._pointerDown({ ...ev(300, 320), target: editor.canvas })
+    editor._pointerMove({ ...ev(104, 320), target: editor.canvas })
+    expect(editor.session.type).toBe('resizing')
+    expect(editor.session.snapGuides?.[0].at).toBe(100)
+    editor._pointerUp({ ...ev(104, 320), target: editor.canvas })
+    expect(editor.store.get('b').x).toBe(100)
+  })
+})
+
 describe('ruled strokes', () => {
   it('shift holds a freehand stroke straight, snapped to 15°, and freehand resumes on release', () => {
     editor.setTool('draw')
