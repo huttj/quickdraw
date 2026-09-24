@@ -17,7 +17,7 @@ describe('<Quickdraw />', () => {
     const [editor, ui] = onMount.mock.calls[0]
     expect(editor.tool).toBe('select')
     expect(ui.setHidden).toBeTypeOf('function')
-    expect(container.querySelectorAll('canvas').length).toBe(2)
+    expect(container.querySelectorAll('.qd-canvas, .qd-overlay').length).toBe(2) // (the minimap has a canvas of its own)
     expect(container.querySelector('.qd-dock')).toBeTruthy()
     unmount()
     expect(container.querySelector('canvas')).toBeNull()

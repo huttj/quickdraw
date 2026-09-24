@@ -73,6 +73,14 @@ Grid spacing adapts to the zoom — doubling and halving around a 40&nbsp;px
 page step, with majors every fifth line — and fades in rather than popping.
 Grids travel into PNG exports that keep the paper background.
 
+## The minimap
+
+A small map of the whole drawing sits in the bottom-left corner: shapes as
+blocks, the viewport as a frame. Click or drag on it to put the view there,
+scroll on it to zoom, and fold it with its chevron. It hides itself on
+narrow boards. Hosts that don't want it pass `minimap: false` (the
+`minimap` prop in React), or flip it live with `ui.setOptions({ minimap })`.
+
 ## The board menu switches
 
 The ⋮ menu includes theme and grid switches by default. If your app owns

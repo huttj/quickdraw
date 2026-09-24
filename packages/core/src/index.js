@@ -41,7 +41,7 @@ export function buildWatermark(editor) {
 
 // One call: editor + chrome in a container.
 // opts: { container, store?, theme?, grid?, readonly?, hideUi?, camera?, styles?,
-//         onSave?, themeToggle?, gridControl?, watermark? }
+//         onSave?, themeToggle?, gridControl?, minimap?, watermark? }
 export function createQuickdraw(opts) {
   const editor = new Editor(opts)
   editor.container.dataset.qdTheme = editor.theme.id
@@ -50,6 +50,7 @@ export function createQuickdraw(opts) {
     onSave: opts.onSave,
     themeToggle: opts.themeToggle,
     gridControl: opts.gridControl,
+    minimap: opts.minimap,
   })
   const watermark = opts.watermark === false ? null : buildWatermark(editor)
   return {

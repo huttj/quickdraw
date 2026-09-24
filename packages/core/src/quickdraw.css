@@ -411,6 +411,48 @@
 }
 .qd-drag-ghost svg { width: 22px; height: 22px; display: block; }
 
+/* ---- minimap ---- */
+/* the whole drawing at a glance, bottom-left; the chevron folds it to a nub */
+.qd-minimap {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 36;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 12px;
+  background: var(--qd-bar-bg);
+  border: 1px solid var(--qd-border);
+  box-shadow: var(--qd-bar-shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+  overflow: hidden;
+  transition: background 320ms ease, border-color 320ms ease, box-shadow 320ms ease;
+}
+.qd-minimap-canvas { display: block; width: 180px; height: 120px; cursor: crosshair; }
+.qd-minimap.qd-folded .qd-minimap-canvas { display: none; }
+.qd-minimap-toggle {
+  width: 22px;
+  height: 22px;
+  margin: 3px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--qd-ink-soft);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qd-minimap-toggle svg { width: 14px; height: 14px; }
+.qd-minimap-toggle:hover { background: var(--qd-hover); color: var(--qd-ink); }
+/* the centred dock reaches the map's corner on boards under ~1000px: step above it */
+@container (max-width: 1000px) {
+  .qd-minimap { bottom: 58px; }
+}
+
 /* ---- watermark ---- */
 /* Quiet by default, legible on hover; sits under the chrome so popovers and
    the dock always win. Theme-aware like the rest of the board. */

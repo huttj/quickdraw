@@ -43,6 +43,7 @@ const handlers = {
       hideUi,
       themeToggle: m.themeToggle !== false,
       gridControl: m.gridControl !== false,
+      minimap: m.minimap !== false,
       watermark: m.watermark !== false,
       styles: m.styles || undefined,
       onSave: async (blob, background) => {

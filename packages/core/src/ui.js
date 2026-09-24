@@ -7,6 +7,7 @@
 // Dependency-free ESM (see palette.js).
 
 import { COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS, FONT_IDS, ALIGN_IDS, FONTS, THEMES } from './palette.js'
+import { pageBounds } from './shapes.js'
 
 const SVG = (inner) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
@@ -126,11 +127,11 @@ const DROP_KINDS = new Set(['line', 'arrow', 'geo', 'text', 'note', ...GEO_IDS])
 // what gives way first as the frame narrows (select and draw never yield)
 const DROP_ORDER = ['hand', 'laser', 'line', 'note', 'image', 'highlight', 'text', 'arrow', 'eraser', 'geo']
 
-export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gridControl = true } = {}) {
+export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gridControl = true, minimap = true } = {}) {
   const root = editor.container
   // menu switches the host can drop — an app that owns its own theme chrome
   // doesn't want a second control for it on the canvas
-  const opts = { themeToggle: themeToggle !== false, gridControl: gridControl !== false }
+  const opts = { themeToggle: themeToggle !== false, gridControl: gridControl !== false, minimap: minimap !== false }
   const ui = el('div', 'qd-ui')
   root.appendChild(ui)
 
@@ -737,6 +738,110 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
   }
   editor.on('help', toggleHelp)
 
+  // ---- minimap -------------------------------------------------------------
+  // A small map of the whole drawing in the bottom-left corner: shapes as
+  // soft blocks, the viewport as a frame. Click or drag to put the view
+  // there, scroll to zoom, the chevron folds it away. Narrow boards (phones)
+  // go without — the dock needs the room.
+  const MM_W = 180, MM_H = 120, MM_PAD = 8
+  const mm = el('div', 'qd-minimap')
+  const mmCanvas = document.createElement('canvas')
+  mmCanvas.className = 'qd-minimap-canvas'
+  const mmToggle = el('button', 'qd-minimap-toggle')
+  mmToggle.title = 'Minimap'
+  mmToggle.setAttribute('aria-label', 'Toggle minimap')
+  mmToggle.innerHTML = ICONS.chevronLeft
+  mm.appendChild(mmCanvas)
+  mm.appendChild(mmToggle)
+  ui.appendChild(mm)
+  let mmFolded = false
+  let mmRaf = 0
+  let mmMap = null // page → map transform of the last draw: { k, ox, oy, b }
+  const mmVisible = () => opts.minimap && !mmFolded && (root.clientWidth || 600) >= 560
+  const mapOf = () => {
+    // the world the map shows: everything drawn, and the view, with a margin
+    const vp = editor.viewportPageBounds()
+    let b = editor.contentBounds()
+    b = b ? {
+      x: Math.min(b.x, vp.x), y: Math.min(b.y, vp.y),
+      w: Math.max(b.x + b.w, vp.x + vp.w) - Math.min(b.x, vp.x), h: Math.max(b.y + b.h, vp.y + vp.h) - Math.min(b.y, vp.y),
+    } : vp
+    const k = Math.min((MM_W - MM_PAD * 2) / (b.w || 1), (MM_H - MM_PAD * 2) / (b.h || 1))
+    return { k, ox: MM_W / 2 - (b.x + b.w / 2) * k, oy: MM_H / 2 - (b.y + b.h / 2) * k, b }
+  }
+  const drawMinimap = () => {
+    mmRaf = 0
+    if (!mmVisible()) return
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    if (mmCanvas.width !== MM_W * dpr) { mmCanvas.width = MM_W * dpr; mmCanvas.height = MM_H * dpr }
+    const ctx = mmCanvas.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, MM_W, MM_H)
+    const m = mmMap = mapOf()
+    const t = editor.theme
+    // shapes as blocks in the board's ink, quiet
+    ctx.fillStyle = t.id === 'dark' ? 'rgba(255, 246, 224, 0.45)' : 'rgba(28, 27, 24, 0.32)'
+    for (const s of editor.shapesSorted()) {
+      const pb = pageBounds(s)
+      const w = Math.max(2, pb.w * m.k), h = Math.max(2, pb.h * m.k)
+      ctx.beginPath()
+      ctx.roundRect(pb.x * m.k + m.ox, pb.y * m.k + m.oy, w, h, Math.min(2, w / 2, h / 2))
+      ctx.fill()
+    }
+    // the viewport frame
+    const vp = editor.viewportPageBounds()
+    ctx.fillStyle = t.selectionFill
+    ctx.strokeStyle = t.selection
+    ctx.lineWidth = 1.5
+    const vx = vp.x * m.k + m.ox, vy = vp.y * m.k + m.oy
+    ctx.fillRect(vx, vy, vp.w * m.k, vp.h * m.k)
+    ctx.strokeRect(vx + 0.75, vy + 0.75, vp.w * m.k - 1.5, vp.h * m.k - 1.5)
+  }
+  const requestMinimap = () => { if (!mmRaf && mmVisible()) mmRaf = requestAnimationFrame(drawMinimap) }
+  const layoutMinimap = () => {
+    mm.classList.toggle('qd-folded', mmFolded)
+    mm.style.display = opts.minimap && (root.clientWidth || 600) >= 560 ? '' : 'none'
+    mmToggle.innerHTML = mmFolded ? ICONS.chevronRight : ICONS.chevronLeft
+    requestMinimap()
+  }
+  mmToggle.addEventListener('pointerdown', (e) => e.stopPropagation())
+  mmToggle.addEventListener('click', (e) => { e.stopPropagation(); mmFolded = !mmFolded; layoutMinimap() })
+  // a press puts the view there; a drag keeps it under the pointer
+  const mmPageAt = (e) => {
+    const r = mmCanvas.getBoundingClientRect()
+    const m = mmMap || mapOf()
+    return { x: (e.clientX - r.left - m.ox) / m.k, y: (e.clientY - r.top - m.oy) / m.k }
+  }
+  const mmCenterOn = (p, animate) => {
+    const { w, h } = editor.viewSize()
+    const z = editor.camera.z
+    editor.setCamera({ z, x: w / 2 / z - p.x, y: h / 2 / z - p.y }, { animate })
+  }
+  mmCanvas.addEventListener('pointerdown', (e) => {
+    e.stopPropagation()
+    if (e.button !== 0) return
+    try { mmCanvas.setPointerCapture(e.pointerId) } catch {}
+    mmCenterOn(mmPageAt(e), 0)
+    const move = (ev) => { if (ev.pointerId === e.pointerId) mmCenterOn(mmPageAt(ev), 0) }
+    const up = (ev) => {
+      if (ev.pointerId !== e.pointerId) return
+      mmCanvas.removeEventListener('pointermove', move)
+      mmCanvas.removeEventListener('pointerup', up)
+      mmCanvas.removeEventListener('pointercancel', up)
+    }
+    mmCanvas.addEventListener('pointermove', move)
+    mmCanvas.addEventListener('pointerup', up)
+    mmCanvas.addEventListener('pointercancel', up)
+  })
+  // scrolling on the map zooms the view about its middle
+  mmCanvas.addEventListener('wheel', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const { w, h } = editor.viewSize()
+    editor.zoomAt(w / 2, h / 2, Math.exp(-e.deltaY * 0.012))
+  }, { passive: false })
+  layoutMinimap()
+
   // ---- responsive fit ------------------------------------------------------
   // Instead of scaling down, the dock sheds tools into the "more" flyout as
   // its frame narrows; below ~5 buttons of room it folds into a single
@@ -778,7 +883,8 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     if (popover && ['more', 'tools', 'geo', 'context'].includes(popover.name)) closePopover()
     refresh()
   }
-  const ro = new ResizeObserver(fit)
+  // (the minimap follows the same frame: it folds away on narrow boards)
+  const ro = new ResizeObserver(() => { fit(); layoutMinimap() })
   ro.observe(root)
   fit()
 
@@ -812,6 +918,9 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     editor.on('theme', refresh),
     editor.on('grid', refresh),
     editor.on('contextmenu', ({ x, y }) => openContextMenu(x, y)),
+    editor.on('change', requestMinimap),
+    editor.on('camera', requestMinimap),
+    editor.on('theme', requestMinimap),
   ]
 
   // popovers close when the pointer goes to the canvas
@@ -828,11 +937,13 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     setOptions(next = {}) {
       if ('themeToggle' in next) opts.themeToggle = next.themeToggle !== false
       if ('gridControl' in next) opts.gridControl = next.gridControl !== false
+      if ('minimap' in next) { opts.minimap = next.minimap !== false; layoutMinimap() }
       if (popover?.name === 'menu') closePopover()
     },
     destroy() {
       offs.forEach((f) => f())
       ro.disconnect()
+      cancelAnimationFrame(mmRaf)
       root.removeEventListener('pointerdown', closeOnCanvas, { capture: true })
       closeHelp()
       closePopover()

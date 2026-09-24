@@ -467,7 +467,7 @@ export class Editor {
 export interface BoardUI {
   setHidden(hidden: boolean): void
   /** Live-toggle the board menu's theme / grid switches. */
-  setOptions(opts: { themeToggle?: boolean; gridControl?: boolean }): void
+  setOptions(opts: { themeToggle?: boolean; gridControl?: boolean; minimap?: boolean }): void
   destroy(): void
 }
 
@@ -479,6 +479,8 @@ export interface BuildUIOptions {
   themeToggle?: boolean
   /** Show the grid switch in the board menu (default true). */
   gridControl?: boolean
+  /** Show the minimap in the bottom-left corner (default true; hidden on narrow boards regardless). */
+  minimap?: boolean
 }
 
 /** Build the floating toolbar / style popovers / board menu for an editor. */
@@ -502,6 +504,8 @@ export interface CreateQuickdrawOptions extends EditorOptions {
   onSave?: (blob: Blob, background: boolean, format: 'png' | 'svg') => void
   themeToggle?: boolean
   gridControl?: boolean
+  /** Show the minimap (default true). */
+  minimap?: boolean
   /**
    * Show the small "Quickdraw" mark in the board's corner (default true).
    * Keeping it is a free way to support the project.

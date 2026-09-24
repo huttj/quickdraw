@@ -1749,3 +1749,50 @@ describe('web fonts', () => {
     expect(textLayout(editor.store.get('t'))).not.toBe(before) // measured afresh
   })
 })
+
+describe('minimap', () => {
+  const mount = (opts = {}) => {
+    const c2 = document.createElement('div')
+    document.body.appendChild(c2)
+    Object.defineProperty(c2, 'clientWidth', { value: 900, configurable: true })
+    Object.defineProperty(c2, 'clientHeight', { value: 600, configurable: true })
+    const board = createQuickdraw({ container: c2, ...opts })
+    return { c2, board }
+  }
+
+  it('shows the whole drawing; a press on it puts the view there', () => {
+    const { c2, board } = mount()
+    const ed = board.editor
+    const mm = c2.querySelector('.qd-minimap')
+    expect(mm).toBeTruthy()
+    expect(mm.style.display).toBe('')
+    const canvas = mm.querySelector('.qd-minimap-canvas')
+    ed.store.put({ id: 'far', typeName: 'shape', type: 'geo', x: 4000, y: 3000, rot: 0, z: 1, props: { geo: 'rectangle', w: 200, h: 200, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw' } })
+    // the map's transform covers the view and the far shape
+    canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 180, height: 120 })
+    const ev = (x, y, over = {}) => new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y, button: 0, ...over })
+    // press the far right-bottom of the map: the camera heads far into the page
+    canvas.dispatchEvent(ev(170, 110))
+    const centre = ed.screenToPage(450, 300)
+    expect(centre.x).toBeGreaterThan(2000)
+    expect(centre.y).toBeGreaterThan(1500)
+    // the chevron folds it
+    mm.querySelector('.qd-minimap-toggle').click()
+    expect(mm.classList.contains('qd-folded')).toBe(true)
+    board.destroy()
+    c2.remove()
+  })
+
+  it('a host can drop it, live; narrow boards go without', () => {
+    const { c2, board } = mount({ minimap: false })
+    const mm = c2.querySelector('.qd-minimap')
+    expect(mm.style.display).toBe('none')
+    board.ui.setOptions({ minimap: true })
+    expect(mm.style.display).toBe('')
+    Object.defineProperty(c2, 'clientWidth', { value: 400, configurable: true })
+    board.ui.setOptions({ minimap: true })
+    expect(mm.style.display).toBe('none')
+    board.destroy()
+    c2.remove()
+  })
+})
