@@ -1981,6 +1981,20 @@ describe('formatting while editing', () => {
   })
 })
 
+describe('links', () => {
+  it('a host may route followed links itself', () => {
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'go', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1, marks: [{ from: 0, to: 2, href: 'https://example.org/x' }] } })
+    const opened = []
+    editor.openLink = (href) => opened.push(href)
+    editor.setTool('select')
+    const p = editor.pageToScreen(4, 4)
+    editor._pointerDown({ ...ev(p.x, p.y), target: editor.canvas })
+    editor._pointerUp({ ...ev(p.x, p.y), target: editor.canvas })
+    expect(opened).toEqual(['https://example.org/x'])
+    editor.openLink = null
+  })
+})
+
 describe('ruled strokes', () => {
   it('shift holds a freehand stroke straight, snapped to 15°, and freehand resumes on release', () => {
     editor.setTool('draw')

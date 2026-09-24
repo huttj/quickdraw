@@ -41,6 +41,8 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **`editor.openLink`.** A host hook for how a followed link opens; the
+  default is still a new tab. Hosts route their own addresses in place.
 - **Shift rules a stroke.** Hold Shift while drawing with the pencil or
   the highlighter and the stroke runs straight from where Shift went down
   to the pointer, snapped to 15°; let go and freehand resumes.
