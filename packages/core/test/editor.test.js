@@ -1738,3 +1738,14 @@ describe('tabs and fonts', () => {
     c2.remove()
   })
 })
+
+describe('web fonts', () => {
+  it('when the document fonts finish loading, text is re-measured and redrawn', async () => {
+    const { textLayout } = await import('../src/shapes.js')
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'hi', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    const before = textLayout(editor.store.get('t'))
+    expect(textLayout(editor.store.get('t'))).toBe(before) // cached
+    editor._onFonts()
+    expect(textLayout(editor.store.get('t'))).not.toBe(before) // measured afresh
+  })
+})

@@ -50,6 +50,9 @@ it adds:
   on text, notes and labels, plus a link badge for shapes that link somewhere
 - The **pointer** is the default tool
 
+- **tldraw's fonts** — Shantell Sans and IBM Plex, self-hosted (SIL Open Font License):
+  `import '@quickdrawjs/core/fonts.css'` next to the stylesheet
+
 Everything is still zero-dependency ESM; the two codecs tldraw's clipboard
 relies on (lz-string, its Float16 stroke paths) are ported inline. See the
 [changelog](CHANGELOG.md) for the details.

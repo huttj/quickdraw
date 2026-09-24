@@ -13,10 +13,12 @@
     },
     "./quickdraw.css": "./src/quickdraw.css",
     "./styles.css": "./src/quickdraw.css",
+    "./fonts.css": "./src/fonts.css",
     "./package.json": "./package.json"
   },
   "files": [
     "src",
+    "fonts",
     "types",
     "README.md"
   ],

@@ -4,7 +4,7 @@
 // so the file matches the board mark for mark, at any size, in any design
 // tool. Dependency-free ESM (see palette.js).
 
-import { SIZES, HIGHLIGHT_ALPHA, HIGHLIGHT_SCALE, GRID_STEP, GRID_MAJOR } from './palette.js'
+import { SIZES, HIGHLIGHT_ALPHA, HIGHLIGHT_SCALE, HIGHLIGHT_PLAIN, GRID_STEP, GRID_MAJOR } from './palette.js'
 import {
   localBounds, pageBounds, textLayout, noteLayout, geoLabelLayout, lineBaseline, lineRuns,
   buildGeoPath, buildInkPath, dashFor, imageFrame, urlBadgeAt, NOTE_W, NOTE_PAD, SEMI,
@@ -103,12 +103,10 @@ export function shapeToSvg(shape, { theme, store, defs }) {
     case 'highlight': {
       // the multiply blend soaks into light paper like the canvas does;
       // viewers without blend support still show the band, just opaque-ish
-      body = tag('path', {
-        d: smoothPath(centerline(p.pts)),
-        ...strokeAttrs(col.stroke, 'solid', SIZES[p.size] * HIGHLIGHT_SCALE),
-        opacity: HIGHLIGHT_ALPHA,
-        style: `mix-blend-mode:${theme.id === 'dark' ? 'lighten' : 'multiply'}`,
-      })
+      const d = smoothPath(centerline(p.pts))
+      const sa = strokeAttrs(col.stroke, 'solid', SIZES[p.size] * HIGHLIGHT_SCALE)
+      body = tag('path', { d, ...sa, opacity: HIGHLIGHT_ALPHA, style: `mix-blend-mode:${theme.id === 'dark' ? 'lighten' : 'multiply'}` }) +
+        tag('path', { d, ...sa, opacity: HIGHLIGHT_ALPHA * HIGHLIGHT_PLAIN }) // the plain pass, as on the canvas
       break
     }
     case 'geo': {

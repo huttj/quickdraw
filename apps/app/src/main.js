@@ -1,5 +1,6 @@
 import { createQuickdraw } from '@quickdrawjs/core'
 import '@quickdrawjs/core/quickdraw.css'
+import '@quickdrawjs/core/fonts.css'
 
 const LEGACY_DOC_KEY = 'quickdraw-app-doc'
 const THEME_KEY = 'quickdraw-app-theme'

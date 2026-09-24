@@ -50,3 +50,25 @@ describe('palette', () => {
     }
   })
 })
+
+describe('fonts', () => {
+  it("the stacks lead with tldraw's faces, which fonts.css self-hosts", async () => {
+    const { FONTS } = await import('../src/palette.js')
+    const { readFileSync, existsSync } = await import('node:fs')
+    const { resolve, dirname } = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+    const here = dirname(fileURLToPath(import.meta.url))
+    expect(FONTS.draw.startsWith("'Shantell Sans'")).toBe(true)
+    expect(FONTS.sans.startsWith("'IBM Plex Sans'")).toBe(true)
+    expect(FONTS.serif.startsWith("'IBM Plex Serif'")).toBe(true)
+    expect(FONTS.mono.startsWith("'IBM Plex Mono'")).toBe(true)
+    const css = readFileSync(resolve(here, '../src/fonts.css'), 'utf8')
+    for (const fam of ['Shantell Sans', 'IBM Plex Sans', 'IBM Plex Serif', 'IBM Plex Mono']) {
+      expect((css.match(new RegExp(`font-family: '${fam}'`, 'g')) || []).length).toBe(4) // regular, italic, bold, bold italic
+    }
+    // every file the stylesheet names is shipped, and so are the licences
+    for (const m of css.matchAll(/url\('\.\.\/fonts\/([^']+)'\)/g)) expect(existsSync(resolve(here, '../fonts', m[1]))).toBe(true)
+    expect(existsSync(resolve(here, '../fonts/LICENSE-ShantellSans.txt'))).toBe(true)
+    expect(existsSync(resolve(here, '../fonts/LICENSE-IBMPlex.txt'))).toBe(true)
+  })
+})

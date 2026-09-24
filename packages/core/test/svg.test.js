@@ -122,3 +122,17 @@ describe('marks in SVG', () => {
     expect(d2.querySelector('circle')).toBeTruthy()
   })
 })
+
+describe('highlight passes', () => {
+  it('a highlight is a blended band plus a faint plain one, so it shows on black too', () => {
+    const store = new Store()
+    const s = shape('highlight', { pts: [0, 0, 0.5, 40, 10, 0.5], color: 'yellow', size: 'm', done: true })
+    const doc = parse(sceneToSvg([s], { theme: THEMES.light, store, background: false }))
+    const paths = [...doc.querySelectorAll('g[data-shape="highlight"] path')]
+    expect(paths.length).toBe(2)
+    expect(paths[0].getAttribute('style')).toContain('multiply')
+    expect(paths[1].getAttribute('style')).toBe(null)
+    expect(parseFloat(paths[1].getAttribute('opacity'))).toBeLessThan(parseFloat(paths[0].getAttribute('opacity')))
+    expect(paths[0].getAttribute('d')).toBe(paths[1].getAttribute('d'))
+  })
+})

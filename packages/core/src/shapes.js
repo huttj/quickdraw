@@ -5,7 +5,7 @@
 // Dependency-free ESM (see palette.js).
 
 import {
-  SIZES, INK_SIZES, FONT_SIZES, NOTE_FONT_SIZES, FONTS, HIGHLIGHT_ALPHA, HIGHLIGHT_SCALE,
+  SIZES, INK_SIZES, FONT_SIZES, NOTE_FONT_SIZES, FONTS, HIGHLIGHT_ALPHA, HIGHLIGHT_SCALE, HIGHLIGHT_PLAIN,
 } from './palette.js'
 import {
   ptsBounds, rotWith, distToPolyline, pointInPolygon, pointInEllipse,
@@ -95,7 +95,15 @@ export function toLocal(shape, px, py) {
 
 const outlineCache = new WeakMap() // draw props -> Path2D
 const geoPathCache = new WeakMap() // geo props+id key stored on props via WeakMap keyed by props (id captured at build)
-const layoutCache = new WeakMap() // text/note/geo-label props -> layout
+let layoutCache = new WeakMap() // text/note/geo-label props -> layout
+
+// Text measured before a web font arrived was measured in the fallback
+// face: once the fonts are in, every layout is stale. The editor calls this
+// when the document's fonts finish loading.
+export function invalidateTextLayout() {
+  layoutCache = new WeakMap()
+  baselineCache.clear()
+}
 
 let measureCtx = null
 const measurer = () => {
@@ -569,10 +577,7 @@ export function drawShape(ctx, shape, opts) {
       break
     }
     case 'highlight': {
-      ctx.globalAlpha = (opts.ghost ? 0.3 : 1) * HIGHLIGHT_ALPHA
-      // multiply soaks into light paper; on dark paper it would blacken —
-      // lighten glows instead, like a marker on a chalkboard
-      ctx.globalCompositeOperation = theme.id === 'dark' ? 'lighten' : 'multiply'
+      const a = (opts.ghost ? 0.3 : 1) * HIGHLIGHT_ALPHA
       ctx.strokeStyle = col.stroke
       ctx.lineWidth = SIZES[p.size] * HIGHLIGHT_SCALE
       ctx.lineCap = 'round'
@@ -581,6 +586,16 @@ export function drawShape(ctx, shape, opts) {
       const flat = []
       for (let i = 0; i < p.pts.length; i += 3) flat.push(p.pts[i], p.pts[i + 1])
       traceSmooth(ctx, flat)
+      // multiply soaks into light paper; on dark paper it would blacken —
+      // lighten glows instead, like a marker on a chalkboard
+      ctx.globalAlpha = a
+      ctx.globalCompositeOperation = theme.id === 'dark' ? 'lighten' : 'multiply'
+      ctx.stroke()
+      // …but either blend vanishes on pixels of the opposite extreme (a
+      // black picture under multiply, a white one under lighten): a faint
+      // plain pass keeps the band visible there
+      ctx.globalAlpha = a * HIGHLIGHT_PLAIN
+      ctx.globalCompositeOperation = 'source-over'
       ctx.stroke()
       break
     }

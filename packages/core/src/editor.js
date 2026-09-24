@@ -8,7 +8,7 @@ import { themeOf, SIZES, FONT_SIZES, GEO_IDS, COLOR_IDS, GRID_IDS, GRID_STEP, GR
 import {
   localBounds, pageBounds, toLocal, drawShape, hitShape, marqueeHits,
   scaleShape, textLayout, noteLayout, NOTE_W, sampleLinePts, imageFrame,
-  mapMarks, textLinkAt, urlBadgeAt,
+  mapMarks, textLinkAt, urlBadgeAt, invalidateTextLayout,
 } from './shapes.js'
 import { boundsUnion, boundsExpand, boundsContain, clamp, rotWith } from './geometry.js'
 import { sceneToSvg } from './svg.js'
@@ -723,6 +723,9 @@ export class Editor {
     c.addEventListener('blur', this._onBlur)
     this._ro = new ResizeObserver(() => this.requestRender())
     this._ro.observe(c)
+    // web fonts landing after the first paint: re-measure and redraw
+    this._onFonts = () => { invalidateTextLayout(); this.requestRender() }
+    document.fonts?.addEventListener?.('loadingdone', this._onFonts)
   }
 
   _evPoint(e) {
@@ -2758,6 +2761,7 @@ export class Editor {
     c.removeEventListener('paste', this._onPaste)
     c.removeEventListener('contextmenu', this._onContextMenu)
     c.removeEventListener('blur', this._onBlur)
+    document.fonts?.removeEventListener?.('loadingdone', this._onFonts)
     this._clearPressTimer()
     this.canvas.remove()
     this.overlay.remove()

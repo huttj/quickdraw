@@ -29,6 +29,16 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **tldraw's fonts, bundled.** `@quickdrawjs/core/fonts.css` self-hosts the
+  faces tldraw uses — Shantell Sans for hand-drawn text, IBM Plex Sans,
+  Serif and Mono for the rest (all SIL Open Font License; the licences ship
+  in `fonts/`). Import it next to `quickdraw.css`; the font stacks lead with
+  these and fall back to system faces without it. Text re-lays out when the
+  fonts finish loading. About 1.4 MB of woff2 across sixteen cuts, loaded on
+  demand per family and style.
+- **Highlights show on dark pixels.** The band gets a faint plain pass on
+  top of its multiply (or lighten, in the dark theme), so it still reads
+  over a black picture — or a white one in the dark theme.
 - **Type size from the edge.** A text box's top and bottom edges (the whole
   edge, not just the square) are a size handle: drag to grow or shrink the
   type, the wrap width stays, the far edge stays put.

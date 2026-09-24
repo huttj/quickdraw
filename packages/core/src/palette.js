@@ -106,11 +106,13 @@ export const FILL_IDS = ['none', 'semi', 'solid', 'pattern']
 export const FONT_IDS = ['draw', 'sans', 'serif', 'mono']
 // where text sits in its box: the text shape's alignment
 export const ALIGN_IDS = ['start', 'middle', 'end']
+// The faces tldraw uses lead each stack (self-hosted by fonts.css — import
+// it next to quickdraw.css); without them, the system's nearest stands in.
 export const FONTS = {
-  draw: "'Segoe Print', 'Comic Sans MS', 'Chalkboard SE', cursive",
-  sans: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif",
-  serif: "'Iowan Old Style', 'New York', Palatino, Georgia, serif",
-  mono: "'SF Mono', ui-monospace, Menlo, monospace",
+  draw: "'Shantell Sans', 'Segoe Print', 'Comic Sans MS', 'Chalkboard SE', cursive",
+  sans: "'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif",
+  serif: "'IBM Plex Serif', 'Iowan Old Style', 'New York', Palatino, Georgia, serif",
+  mono: "'IBM Plex Mono', 'SF Mono', ui-monospace, Menlo, monospace",
 }
 
 export const GEO_IDS = ['rectangle', 'ellipse', 'triangle', 'diamond', 'hexagon', 'star', 'cloud']
@@ -118,3 +120,6 @@ export const GEO_IDS = ['rectangle', 'ellipse', 'triangle', 'diamond', 'hexagon'
 // Highlighter: wide translucent band that multiplies into the paper.
 export const HIGHLIGHT_ALPHA = 0.55
 export const HIGHLIGHT_SCALE = 4.5 // band width = SIZES[size] * this
+// the share of the band drawn again without a blend, so it still shows
+// over pixels the blend can't touch (black under multiply, white under lighten)
+export const HIGHLIGHT_PLAIN = 0.35

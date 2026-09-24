@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Quickdraw, useQuickdrawStore } from '@quickdrawjs/react'
 import '@quickdrawjs/core/quickdraw.css'
+import '@quickdrawjs/core/fonts.css'
 
 const STORAGE_KEY = 'quickdraw-react-demo'
 

@@ -41,6 +41,25 @@ editor.setStyle('color', 'violet')
 Highlighter colors get the same treatment with translucency on light boards
 and a glow on dark ones.
 
+## Fonts
+
+Text comes in four families — hand-drawn, sans, serif and mono — picked in
+the styles panel or with `editor.setStyle('font', …)`. The stacks lead
+with the faces tldraw uses, self-hosted in the core package under the SIL
+Open Font License: Shantell Sans for hand-drawn text, IBM Plex Sans, Serif
+and Mono for the rest. Import the stylesheet next to `quickdraw.css` and
+they load on demand, per family and style:
+
+```js
+import '@quickdrawjs/core/quickdraw.css'
+import '@quickdrawjs/core/fonts.css'
+```
+
+Without it the board uses the nearest system faces (Comic Sans or
+Chalkboard for hand-drawn text, the platform's sans, serif and mono).
+Text re-lays out as the web fonts arrive, so nothing needs to wait for
+them. The React Native bundle stays on system faces.
+
 ## Grids
 
 Six backdrops: bare paper, grid lines, ruled notebook lines, dotted intersections, blueprint crosses, or an isometric weave.
