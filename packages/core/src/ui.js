@@ -758,11 +758,11 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
   mmFit.innerHTML = ICONS.fit
   mmFit.addEventListener('pointerdown', (e) => e.stopPropagation())
   mmFit.addEventListener('click', (e) => { e.stopPropagation(); editor.fitContent({ animate: 220 }) })
-  const mmTools = el('div', 'qd-minimap-tools')
-  mmTools.appendChild(mmFit)
-  mmTools.appendChild(mmToggle)
+  // fit at the top-left corner, fold at the top-right, each nudged a little
+  // past the map's edge so they cover less of it
   mm.appendChild(mmCanvas)
-  mm.appendChild(mmTools)
+  mm.appendChild(mmFit)
+  mm.appendChild(mmToggle)
   ui.appendChild(mm)
   let mmFolded = false
   let mmRaf = 0
