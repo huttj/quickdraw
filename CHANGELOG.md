@@ -29,6 +29,11 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **Text formatting.** While editing, ⌘B / ⌘I / ⌘U, ⇧⌘X (strike), ⌘E
+  (code), ⇧⌘H (highlight) and ⌘K (link) apply to the selection, or to what
+  you type next; a small bar above the text offers the same. Marks were
+  already drawn (they came in with tldraw pastes); now they can be made.
+  `editor.toggleMark`, `setLink`, `editingStyle` for custom UIs.
 - **The action bar is for fingers.** The undo / redo / duplicate / delete
   pill now shows only where the primary input is touch; with a mouse and
   keyboard every one of those is a key away. `actions: 'always' | 'never'`

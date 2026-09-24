@@ -1821,3 +1821,94 @@ describe('action bar', () => {
     c2.remove()
   })
 })
+
+describe('formatting while editing', () => {
+  const key = (ta, k, over = {}) => ta.dispatchEvent(new KeyboardEvent('keydown', { key: k, metaKey: true, bubbles: true, cancelable: true, ...over }))
+  const type = (ta, text) => { const s = ta.selectionStart; ta.value = ta.value.slice(0, s) + text + ta.value.slice(ta.selectionEnd); ta.setSelectionRange(s + text.length, s + text.length); ta.dispatchEvent(new Event('input')) }
+
+  it('⌘B over a selection bolds it; with the caret alone it bolds what comes next, until the caret moves', () => {
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'hello world', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.setTool('select')
+    editor.editShapeText('t')
+    const ta = editor.editing.textarea
+    ta.setSelectionRange(0, 5)
+    key(ta, 'b')
+    expect(editor.store.get('t').props.marks).toEqual([{ from: 0, to: 5, b: true }])
+    expect(editor.editingStyle().b).toBe(true)
+    key(ta, 'b') // again: off
+    expect(editor.store.get('t').props.marks).toBeUndefined()
+    // caret at the end, ⌘I, then typing: the new text is italic, the old isn't
+    ta.setSelectionRange(11, 11)
+    key(ta, 'i')
+    expect(editor.editingStyle().i).toBe(true)
+    type(ta, '!')
+    type(ta, '?')
+    expect(editor.store.get('t').props.marks).toEqual([{ from: 11, to: 13, i: true }])
+    // moving the caret forgets the pending toggle; typing there is plain
+    ta.setSelectionRange(5, 5)
+    ta.dispatchEvent(new Event('keyup'))
+    key(ta, 'u')
+    ta.setSelectionRange(0, 0)
+    ta.dispatchEvent(new Event('keyup'))
+    type(ta, 'X')
+    expect(editor.store.get('t').props.marks).toEqual([{ from: 12, to: 14, i: true }])
+    // strike and highlight take shift; code is ⌘E
+    ta.setSelectionRange(1, 6)
+    key(ta, 'x', { shiftKey: true })
+    key(ta, 'h', { shiftKey: true })
+    key(ta, 'e')
+    expect(editor.store.get('t').props.marks[0]).toEqual({ from: 1, to: 6, s: true, hl: true, code: true })
+    editor._commitText()
+    expect(editor.store.get('t').props.text).toBe('Xhello world!?')
+  })
+
+  it('⌘K links the selection or the word at the caret; empty unlinks', () => {
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'see the docs now', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.setTool('select')
+    editor.editShapeText('t')
+    const ta = editor.editing.textarea
+    const orig = window.prompt
+    try {
+      window.prompt = () => 'https://docs'
+      ta.setSelectionRange(9, 9) // inside "docs"
+      key(ta, 'k')
+      expect(editor.store.get('t').props.marks).toEqual([{ from: 8, to: 12, href: 'https://docs' }])
+      expect(editor.editingStyle().href).toBe('https://docs')
+      window.prompt = () => ''
+      ta.setSelectionRange(8, 12)
+      key(ta, 'k')
+      expect(editor.store.get('t').props.marks).toBeUndefined()
+      window.prompt = () => null // cancelled: nothing changes
+      ta.setSelectionRange(0, 3)
+      key(ta, 'k')
+      expect(editor.store.get('t').props.marks).toBeUndefined()
+    } finally {
+      window.prompt = orig
+    }
+    editor._commitText()
+  })
+
+  it('the formatting bar appears while editing, mirrors the caret, and applies without losing the text', () => {
+    const c2 = document.createElement('div')
+    document.body.appendChild(c2)
+    const board = createQuickdraw({ container: c2 })
+    const ed = board.editor
+    const bar = c2.querySelector('.qd-fmt')
+    expect(bar.style.display).toBe('none')
+    ed.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'abc', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1, marks: [{ from: 0, to: 3, b: true }] } })
+    ed.setTool('select')
+    ed.editShapeText('t')
+    expect(bar.style.display).toBe('')
+    const btn = (k) => bar.querySelector(`[data-mark="${k}"]`)
+    ed.editing.textarea.setSelectionRange(0, 3)
+    ed.editing.textarea.dispatchEvent(new Event('select'))
+    expect(btn('b').classList.contains('on')).toBe(true)
+    btn('i').click()
+    expect(ed.store.get('t').props.marks).toEqual([{ from: 0, to: 3, b: true, i: true }])
+    expect(ed.editing).toBeTruthy() // still editing
+    ed._commitText()
+    expect(bar.style.display).toBe('none')
+    board.destroy()
+    c2.remove()
+  })
+})

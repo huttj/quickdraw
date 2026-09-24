@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, noteLayout, geoLabelLayout, imageFrame, drawShape,
-  runsIn, lineRuns, mapMarks, textLinkAt, urlBadgeAt,
+  runsIn, lineRuns, mapMarks, textLinkAt, urlBadgeAt, markAt, hasMark, setMark, normalizeMarks,
 } from '../src/shapes.js'
 import { Store } from '../src/store.js'
 import { THEMES } from '../src/palette.js'
@@ -250,5 +250,31 @@ describe('spaces in text', () => {
     expect(t('hello   ').lines[0].w).toBeCloseTo(t('hello').lines[0].w)
     // spaces in the middle still count
     expect(t('a   b').lines[0].w).toBeGreaterThan(t('ab').lines[0].w)
+  })
+})
+
+describe('editing marks', () => {
+  it('setMark splits runs at the edges, hasMark asks for the whole range, normalize merges', () => {
+    let m = setMark([], 2, 6, 'b', true)
+    expect(m).toEqual([{ from: 2, to: 6, b: true }])
+    expect(hasMark(m, 2, 6, 'b')).toBe(true)
+    expect(hasMark(m, 1, 6, 'b')).toBe(false)
+    expect(hasMark(m, 3, 5, 'i')).toBe(false)
+    // italic over the tail of the bold run and beyond: three runs
+    m = setMark(m, 4, 8, 'i', true)
+    expect(m).toEqual([{ from: 2, to: 4, b: true }, { from: 4, to: 6, b: true, i: true }, { from: 6, to: 8, i: true }])
+    // clearing bold from the middle leaves the rest bold
+    m = setMark(m, 3, 5, 'b', false)
+    expect(m).toEqual([{ from: 2, to: 3, b: true }, { from: 4, to: 5, i: true }, { from: 5, to: 6, b: true, i: true }, { from: 6, to: 8, i: true }])
+    // making it bold again merges back
+    m = setMark(m, 3, 5, 'b', true)
+    expect(m).toEqual([{ from: 2, to: 4, b: true }, { from: 4, to: 6, b: true, i: true }, { from: 6, to: 8, i: true }])
+    expect(markAt(m, 5)).toEqual({ b: true, i: true })
+    expect(markAt(m, 0)).toEqual({})
+    // a link carries its href; clearing it drops the run when nothing's left
+    m = setMark([], 0, 3, 'href', true, 'https://x')
+    expect(m).toEqual([{ from: 0, to: 3, href: 'https://x' }])
+    expect(setMark(m, 0, 3, 'href', false)).toEqual([])
+    expect(normalizeMarks([{ from: 5, to: 8, b: true }, { from: 0, to: 5, b: true }, { from: 9, to: 9, b: true }])).toEqual([{ from: 0, to: 8, b: true }])
   })
 })

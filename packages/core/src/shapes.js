@@ -280,6 +280,64 @@ export function mapMarks(marks, oldText, newText) {
   return marks.map((m) => ({ ...m, from: map(m.from), to: map(m.to) })).filter((m) => m.to > m.from)
 }
 
+// ---- editing marks ---------------------------------------------------------
+// Marks are kept as sorted, non-overlapping runs, adjacent equal runs merged.
+const MARK_KEYS = ['b', 'i', 'u', 's', 'code', 'hl', 'href']
+const sameStyle = (a, b) => MARK_KEYS.every((k) => (a[k] ?? false) === (b[k] ?? false))
+const styleOf = (m) => { const o = {}; for (const k of MARK_KEYS) if (m[k]) o[k] = m[k]; return o }
+export function normalizeMarks(marks) {
+  const out = []
+  for (const m of [...(marks || [])].sort((x, y) => x.from - y.from)) {
+    if (m.to <= m.from || !Object.keys(styleOf(m)).length) continue
+    const last = out[out.length - 1]
+    if (last && last.to >= m.from && sameStyle(last, m)) last.to = Math.max(last.to, m.to)
+    else out.push({ from: m.from, to: m.to, ...styleOf(m) })
+  }
+  return out
+}
+// the style at a text position (the run containing it), {} when plain
+export function markAt(marks, pos) {
+  for (const m of marks || []) if (pos >= m.from && pos < m.to) return styleOf(m)
+  return {}
+}
+// does every character of [from, to) carry the key?
+export function hasMark(marks, from, to, key) {
+  if (to <= from) return !!markAt(marks, from)[key]
+  let pos = from
+  for (const m of marks || []) {
+    if (m.to <= pos || m.from >= to) continue
+    if (m.from > pos || !m[key]) return false
+    pos = Math.min(m.to, to)
+    if (pos >= to) return true
+  }
+  return false
+}
+// [from, to) with the key set (to `value`, true by default) or cleared;
+// runs are split at the edges so the rest of the text keeps its marks
+export function setMark(marks, from, to, key, on, value = true) {
+  if (to <= from) return normalizeMarks(marks)
+  const out = []
+  for (const m of marks || []) {
+    if (m.to <= from || m.from >= to) { out.push(m); continue }
+    if (m.from < from) out.push({ ...m, to: from })
+    if (m.to > to) out.push({ ...m, from: to })
+    const mid = { ...m, from: Math.max(m.from, from), to: Math.min(m.to, to) }
+    if (on) mid[key] = value; else delete mid[key]
+    out.push(mid)
+  }
+  if (on) {
+    // the stretches of [from, to) no run covered get a run of their own
+    let pos = from
+    for (const m of normalizeMarks(marks)) {
+      if (m.to <= from || m.from >= to) continue
+      if (m.from > pos) out.push({ from: pos, to: m.from, [key]: value })
+      pos = Math.max(pos, m.to)
+    }
+    if (pos < to) out.push({ from: pos, to, [key]: value })
+  }
+  return normalizeMarks(out)
+}
+
 // where the text of a text/note/geo shape sits in its local frame:
 // { lines, fontSize, font, lh, top, marks, text, left(line), scale }
 function textBlock(shape) {
