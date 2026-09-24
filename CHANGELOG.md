@@ -29,6 +29,13 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **Font and alignment in the styles panel.** The four type families
+  (hand-drawn, sans, serif, mono) and text alignment (left / centre /
+  right) get rows in the styles popover; `setStyle('font' | 'align', …)`.
+- **Text edits stay put.** Tabs are kept as spaces everywhere text comes
+  in (a tab drew as one space on the canvas and eight columns in the
+  editor, so the editor spread the line out), and a line's trailing spaces
+  no longer shift centred or right-aligned text.
 - **Rotate from the corners.** With a mouse there's no knob: the cursor
   becomes tldraw's corner rotate arrow just outside each corner of the
   selection, aligned to that corner, and turns with the shape as you drag.

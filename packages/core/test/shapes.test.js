@@ -243,3 +243,12 @@ describe('text marks', () => {
     expect(urlBadgeAt(geo())).toBe(null)
   })
 })
+
+describe('spaces in text', () => {
+  it("a line's width leaves trailing spaces out, so centred text doesn't shift", () => {
+    const t = (text) => textLayout({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text, color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    expect(t('hello   ').lines[0].w).toBeCloseTo(t('hello').lines[0].w)
+    // spaces in the middle still count
+    expect(t('a   b').lines[0].w).toBeGreaterThan(t('ab').lines[0].w)
+  })
+})

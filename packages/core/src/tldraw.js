@@ -194,6 +194,17 @@ export function richTextToText(rt) {
   return { text, marks }
 }
 export const richTextToPlain = (rt) => richTextToText(rt).text
+// tabs come through as spaces (see the editor's normalizeText); marks shift with them
+function untab({ text, marks }) {
+  if (!text.includes('\t')) return { text, marks }
+  const out = []
+  let t = ''
+  const map = new Array(text.length + 1)
+  for (let i = 0; i < text.length; i++) { map[i] = t.length; t += text[i] === '\t' ? '    ' : text[i] }
+  map[text.length] = t.length
+  for (const m of marks) out.push({ ...m, from: map[m.from], to: map[m.to] })
+  return { text: t, marks: out }
+}
 
 // segments → flat [x, y, pressure] triplets, whatever encoding they use
 function segmentPoints(segments, scaleX = 1, scaleY = 1) {
@@ -263,7 +274,7 @@ function convertShape(s, o, r, binds) {
   const base = { id: s.id, typeName: 'shape', x: o.x, y: o.y, rot: 0, z: 0 }
   switch (s.type) {
     case 'text': {
-      const { text, marks } = richTextToText(p.richText ?? p.text)
+      const { text, marks } = untab(richTextToText(p.richText ?? p.text))
       return placed({
         ...base, type: 'text',
         props: {
@@ -275,14 +286,14 @@ function convertShape(s, o, r, binds) {
       }, o, r)
     }
     case 'note': {
-      const { text, marks } = richTextToText(p.richText ?? p.text)
+      const { text, marks } = untab(richTextToText(p.richText ?? p.text))
       return placed({
         ...base, type: 'note',
         props: { text, color: color(p.color), size: size(p.size), font: font(p.font), scale: p.scale || 1, ...(marks.length ? { marks } : {}), ...link(p) },
       }, o, r)
     }
     case 'geo': {
-      const { text: label, marks } = richTextToText(p.richText ?? p.text)
+      const { text: label, marks } = untab(richTextToText(p.richText ?? p.text))
       return placed({
         ...base, type: 'geo',
         props: {

@@ -266,6 +266,8 @@
 .qd-opt svg { width: 20px; height: 20px; }
 .qd-opt:hover { background: var(--qd-hover); }
 .qd-opt.on { background: var(--qd-on-bg); color: var(--qd-on-ink); }
+.qd-font { font-size: 15px; font-weight: 500; letter-spacing: 0.01em; }
+.qd-aligns .qd-opt { width: 54px; }
 .qd-size-pip {
   width: var(--pip);
   height: var(--pip);

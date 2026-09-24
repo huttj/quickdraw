@@ -185,6 +185,12 @@ function wrapLines(text, font, fontSize, maxW, marks) {
     out.push({ text: line, w: measureSpan(ctx, str, lineStart, cur, marks, fontSize, font), start: lineStart })
     pos += para.length + 1
   }
+  // a line's width leaves its trailing spaces out, as a text box does: they
+  // hang past the edge and never push centred or right-aligned text over
+  for (const l of out) {
+    const trimmed = l.text.replace(/\s+$/, '')
+    if (trimmed.length !== l.text.length) l.w = measureSpan(ctx, str, l.start, l.start + trimmed.length, marks, fontSize, font)
+  }
   return out
 }
 

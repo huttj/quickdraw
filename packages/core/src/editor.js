@@ -22,7 +22,7 @@ const RESIZE_CURSORS = {
   tl: 'nwse-resize', br: 'nwse-resize', tr: 'nesw-resize', bl: 'nesw-resize',
   t: 'ns-resize', b: 'ns-resize', l: 'ew-resize', r: 'ew-resize',
 }
-const DEFAULT_STYLES = { color: 'blue', size: 'm', dash: 'draw', fill: 'none', font: 'draw' }
+const DEFAULT_STYLES = { color: 'blue', size: 'm', dash: 'draw', fill: 'none', font: 'draw', align: 'start' }
 // the eight box handles as fractions of a box — crop mode and the rotated
 // resize frame both hang theirs here
 const BOX_HANDLES = {
@@ -382,6 +382,7 @@ export class Editor {
         dash: ['draw', 'geo', 'arrow', 'line'],
         fill: ['geo'],
         font: ['text', 'note', 'geo'],
+        align: ['text'],
       }
       this.store.transact(() => {
         for (const id of this.selection) {
@@ -399,7 +400,7 @@ export class Editor {
     for (const id of this.selection) {
       const s = this.store.get(id)
       if (!s) continue
-      for (const k of ['color', 'size', 'dash', 'fill', 'font']) {
+      for (const k of ['color', 'size', 'dash', 'fill', 'font', 'align']) {
         if (s.props[k] === undefined) continue
         if (!(k in out)) out[k] = s.props[k]
         else if (out[k] !== s.props[k]) out[k] = null
@@ -1202,7 +1203,7 @@ export class Editor {
     this.store.put({
       id, typeName: 'shape', type: 'text', x: p.x, y: p.y - FONT_SIZES[this.styles.size] * 0.66, rot: 0,
       z: this.store.maxZ() + 1,
-      props: { text: '', color: this.styles.color, size: this.styles.size, font: this.styles.font, autosize: true, scale: 1 },
+      props: { text: '', color: this.styles.color, size: this.styles.size, font: this.styles.font, align: this.styles.align, autosize: true, scale: 1 },
     })
     this.setTool('select')
     this.setSelection([id])
@@ -1237,6 +1238,15 @@ export class Editor {
     const sync = () => {
       const cur = this.store.get(id)
       if (!cur) return
+      // a pasted tab would render eight columns wide here and one on the
+      // canvas: make it spaces, keeping the caret where it was
+      if (ta.value.includes('\t')) {
+        const at = ta.selectionStart
+        const before = ta.value.slice(0, at)
+        ta.value = normalizeText(ta.value)
+        const at2 = normalizeText(before).length
+        ta.setSelectionRange(at2, at2)
+      }
       const patch = field === 'label' ? { label: ta.value } : { text: ta.value }
       // marks ride along with the edit (see mapMarks)
       const mk = field === 'label' ? 'labelMarks' : 'marks'
@@ -2123,7 +2133,7 @@ export class Editor {
     const id = newId()
     this.store.put({
       id, typeName: 'shape', type: 'text', x: vp.x + vp.w / 2, y: vp.y + vp.h / 2, rot: 0, z: this.store.maxZ() + 1,
-      props: { text: text.replace(/\r\n?/g, '\n'), color: this.styles.color, size: this.styles.size, font: this.styles.font, autosize: true, scale: 1 },
+      props: { text: normalizeText(text), color: this.styles.color, size: this.styles.size, font: this.styles.font, align: this.styles.align, autosize: true, scale: 1 },
     })
     // centre it on the view now that it has a size
     const b = pageBounds(this.store.get(id))
@@ -2737,6 +2747,10 @@ export class Editor {
     c.classList.remove('qd-root')
   }
 }
+
+// text as the board keeps it: Unix newlines, tabs as four spaces (a tab
+// draws as one space on a canvas and eight columns in a textarea)
+export const normalizeText = (t) => String(t ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ')
 
 // follow a link from the board, in a new tab and only to somewhere sane
 export function openUrl(href) {

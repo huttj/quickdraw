@@ -6,7 +6,7 @@
 // the standard set users already know.
 // Dependency-free ESM (see palette.js).
 
-import { COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS, THEMES } from './palette.js'
+import { COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS, FONT_IDS, ALIGN_IDS, FONTS, THEMES } from './palette.js'
 
 const SVG = (inner) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
@@ -96,6 +96,14 @@ const DASH_ICONS = {
   dashed: SVG('<path d="M4 12h3.2M10.4 12h3.2M16.8 12h3.2"/>'),
   dotted: SVG('<path d="M4.5 12h.01M9.5 12h.01M14.5 12h.01M19.5 12h.01" stroke-width="3"/>'),
 }
+// the type families, each shown in itself
+const FONT_TIPS = { draw: 'Hand-drawn', sans: 'Sans', serif: 'Serif', mono: 'Mono' }
+const ALIGN_ICONS = {
+  start: SVG('<path d="M21 6H3"/><path d="M15 12H3"/><path d="M17 18H3"/>'),
+  middle: SVG('<path d="M21 6H3"/><path d="M17 12H7"/><path d="M19 18H5"/>'),
+  end: SVG('<path d="M21 6H3"/><path d="M21 12H9"/><path d="M21 18H7"/>'),
+}
+const ALIGN_TIPS = { start: 'Align text left', middle: 'Center text', end: 'Align text right' }
 const FILL_ICONS = {
   none: SVG('<rect x="5" y="5" width="14" height="14" rx="2"/>'),
   semi: SVG('<rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" fill-opacity="0.18"/>'),
@@ -363,12 +371,31 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
       b.addEventListener('click', (e) => { e.stopPropagation(); editor.setStyle('fill', f); restyle() })
       fills.appendChild(b)
     }
+    const fonts = row('qd-fonts')
+    for (const f of FONT_IDS) {
+      const b = el('button', 'qd-opt qd-font' + (cur.font === f ? ' on' : ''))
+      b.title = FONT_TIPS[f]
+      b.textContent = 'Aa'
+      b.style.fontFamily = FONTS[f]
+      b.addEventListener('click', (e) => { e.stopPropagation(); editor.setStyle('font', f); restyle() })
+      fonts.appendChild(b)
+    }
+    const aligns = row('qd-aligns')
+    for (const a of ALIGN_IDS) {
+      const b = el('button', 'qd-opt' + (cur.align === a ? ' on' : ''))
+      b.title = ALIGN_TIPS[a]
+      b.innerHTML = ALIGN_ICONS[a]
+      b.addEventListener('click', (e) => { e.stopPropagation(); editor.setStyle('align', a); restyle() })
+      aligns.appendChild(b)
+    }
     function restyle() {
       const c2 = editor.currentStyles()
       colors.querySelectorAll('.qd-dot').forEach((b, i) => b.classList.toggle('on', COLOR_IDS[i] === c2.color))
       sizes.querySelectorAll('.qd-opt').forEach((b, i) => b.classList.toggle('on', SIZE_IDS[i] === c2.size))
       dashes.querySelectorAll('.qd-opt').forEach((b, i) => b.classList.toggle('on', DASH_IDS[i] === c2.dash))
       fills.querySelectorAll('.qd-opt').forEach((b, i) => b.classList.toggle('on', FILL_IDS[i] === c2.fill))
+      fonts.querySelectorAll('.qd-opt').forEach((b, i) => b.classList.toggle('on', FONT_IDS[i] === c2.font))
+      aligns.querySelectorAll('.qd-opt').forEach((b, i) => b.classList.toggle('on', ALIGN_IDS[i] === c2.align))
       refresh()
     }
   }

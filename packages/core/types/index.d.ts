@@ -14,6 +14,7 @@ export type SizeId = 's' | 'm' | 'l' | 'xl'
 export type DashId = 'draw' | 'solid' | 'dashed' | 'dotted'
 export type FillId = 'none' | 'semi' | 'solid' | 'pattern'
 export type FontId = 'draw' | 'sans' | 'serif' | 'mono'
+export type TextAlignId = 'start' | 'middle' | 'end'
 export type GeoId = 'rectangle' | 'ellipse' | 'triangle' | 'diamond' | 'hexagon' | 'star' | 'cloud'
 export type ThemeId = 'light' | 'dark'
 export type GridId = 'none' | 'lines' | 'ruled' | 'dots' | 'crosses' | 'iso'
@@ -54,6 +55,8 @@ export interface Styles {
   dash: DashId
   fill: FillId
   font: FontId
+  /** Text shapes only. */
+  align: TextAlignId
 }
 
 export type ShapeType =
@@ -146,6 +149,8 @@ export const DASH_IDS: DashId[]
 export const FILL_IDS: FillId[]
 export const GEO_IDS: GeoId[]
 export const GRID_IDS: GridId[]
+export const FONT_IDS: FontId[]
+export const ALIGN_IDS: TextAlignId[]
 export const THEMES: Record<ThemeId, Theme>
 export const SIZES: Record<SizeId, number>
 export const FONT_SIZES: Record<SizeId, number>
@@ -169,6 +174,8 @@ export function mapMarks(marks: TextMark[] | undefined, oldText: string, newText
 export function textLinkAt(shape: ShapeRecord, lx: number, ly: number): string | null
 /** The link badge a shape with `props.url` wears (local centre and radius), or null. */
 export function urlBadgeAt(shape: ShapeRecord): { x: number; y: number; r: number } | null
+/** Text as the board keeps it: Unix newlines, tabs as four spaces. */
+export function normalizeText(text: string): string
 /** Follow a link from the board: a new tab, http(s) and mailto only. */
 export function openUrl(href: string): void
 /** The full source picture of an image shape, laid out in the shape's local frame (crop undone). */

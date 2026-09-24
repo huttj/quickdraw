@@ -1664,3 +1664,49 @@ describe('links', () => {
     }
   })
 })
+
+describe('tabs and fonts', () => {
+  it('a tab pasted into the editor becomes spaces, caret kept; normalizeText does the same for pastes', async () => {
+    const { normalizeText } = await import('../src/editor.js')
+    expect(normalizeText('a\tb\r\nc')).toBe('a    b\nc')
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'ab', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.setTool('select')
+    editor.editShapeText('t')
+    const ta = editor.editing.textarea
+    ta.value = 'a\tb'
+    ta.setSelectionRange(2, 2) // just after the tab
+    ta.dispatchEvent(new Event('input'))
+    expect(ta.value).toBe('a    b')
+    expect(ta.selectionStart).toBe(5)
+    editor._commitText()
+    expect(editor.store.get('t').props.text).toBe('a    b')
+  })
+
+  it('the styles popover offers fonts and text alignment', () => {
+    const c2 = document.createElement('div')
+    document.body.appendChild(c2)
+    const board = createQuickdraw({ container: c2 })
+    const ed = board.editor
+    ed.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'hi', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    ed.setSelection(['t'])
+    c2.querySelector('.qd-dock button[data-name="styles"]').click()
+    const fonts = [...c2.querySelectorAll('.qd-fonts .qd-opt')]
+    expect(fonts.map((b) => b.title)).toEqual(['Hand-drawn', 'Sans', 'Serif', 'Mono'])
+    expect(fonts[0].classList.contains('on')).toBe(true)
+    fonts[2].click()
+    expect(ed.store.get('t').props.font).toBe('serif')
+    expect(fonts[2].classList.contains('on')).toBe(true)
+    const aligns = [...c2.querySelectorAll('.qd-aligns .qd-opt')]
+    expect(aligns.length).toBe(3)
+    aligns[1].click()
+    expect(ed.store.get('t').props.align).toBe('middle')
+    expect(ed.currentStyles().align).toBe('middle')
+    // with nothing selected the pen takes it, and new text is born with it
+    ed.setSelection([])
+    ed.setStyle('align', 'end')
+    const id = ed.dropShape('text', { x: 50, y: 50 })
+    expect(ed.store.get(id).props.align).toBe('end')
+    board.destroy()
+    c2.remove()
+  })
+})
