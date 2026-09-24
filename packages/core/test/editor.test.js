@@ -1547,8 +1547,6 @@ describe('resize pinning', () => {
     editor.setTool('select')
     editor.setSelection(['t'])
     const b0 = pageBounds(t)
-    // no top/bottom handles on text
-    expect(editor._hitHandle(b0.x + b0.w / 2, b0.y)).toBe(null)
     expect(editor._hitHandle(b0.x + b0.w, b0.y + b0.h / 2)).toEqual({ kind: 'resize', which: 'r' })
     // pull the right edge in by 40
     drag(editor, [[b0.x + b0.w, b0.y + b0.h / 2], [b0.x + b0.w - 40, b0.y + b0.h / 2]])
@@ -1563,6 +1561,36 @@ describe('resize pinning', () => {
     const s2 = editor.store.get('t')
     expect(pageBounds(s2).x + pageBounds(s2).w).toBeCloseTo(b1.x + b1.w)
     expect(pageBounds(s2).w).toBeCloseTo(b1.w - 20)
+  })
+
+  it("a text box's top and bottom edges set its type size, the wrap width staying, the far edge pinned", () => {
+    const t = text(editor, 100, 100, 'some words that wrap around')
+    editor.store.update('t', { props: { autosize: false, w: 150 } })
+    editor.setTool('select')
+    editor.setSelection(['t'])
+    const b0 = pageBounds(editor.store.get('t'))
+    // the whole bottom edge is the handle, not just its midpoint
+    expect(editor._hitHandle(b0.x + 10, b0.y + b0.h)).toEqual({ kind: 'resize', which: 'b' })
+    expect(editor._hitHandle(b0.x + b0.w - 10, b0.y)).toEqual({ kind: 'resize', which: 't' })
+    expect(editor._hitHandle(b0.x + 10, b0.y + b0.h / 2)).toBe(null)
+    // pull the bottom down to half again as tall: the type grows, the width doesn't, the top stays
+    drag(editor, [[b0.x + 10, b0.y + b0.h], [b0.x + 10, b0.y + b0.h * 1.5]])
+    let s = editor.store.get('t')
+    expect(s.props.scale).toBeCloseTo(1.5)
+    expect(s.props.w).toBe(150)
+    expect(s.x).toBe(100)
+    expect(s.y).toBe(100)
+    // pull the top up: the type grows and the bottom edge stays put exactly
+    const b1 = pageBounds(s)
+    drag(editor, [[b1.x + 20, b1.y], [b1.x + 20, b1.y - 30]])
+    s = editor.store.get('t')
+    expect(s.props.scale).toBeGreaterThan(1.5)
+    expect(s.props.w).toBe(150)
+    expect(pageBounds(s).y + pageBounds(s).h).toBeCloseTo(b1.y + b1.h)
+    // and back down shrinks it
+    const b2 = pageBounds(s)
+    drag(editor, [[b2.x + 20, b2.y + b2.h], [b2.x + 20, b2.y + b2.h / 2]])
+    expect(editor.store.get('t').props.scale).toBeLessThan(s.props.scale)
   })
 
   it('a side pull on a note scales it as a whole with the far edge pinned; a corner keeps the far corner', () => {

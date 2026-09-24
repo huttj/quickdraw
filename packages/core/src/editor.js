@@ -1534,9 +1534,12 @@ export class Editor {
     this.store.transact(() => {
       for (const [id, orig] of ss.orig) {
         if (!this.store.has(id)) continue
-        const scaled = scaleShape(orig, sx, sy)
-        // shape origin maps through the anchor like any other point
-        this.store.put({ ...scaled, x: ax + (orig.x - ax) * sx, y: ay + (orig.y - ay) * sy })
+        const scaled = scaleShape(orig, sx, sy, { handle })
+        // shape origin maps through the anchor like any other point — except
+        // text pulled by its top edge, whose new height (the type re-wraps)
+        // is measured so the bottom edge stays exactly put
+        const y = scaled.type === 'text' && handle === 't' ? ay - localBounds(scaled).h : ay + (orig.y - ay) * sy
+        this.store.put({ ...scaled, x: ax + (orig.x - ax) * sx, y })
       }
     })
   }
@@ -1573,7 +1576,7 @@ export class Editor {
       if (h.includes('l')) x0 = x1 - lb.w * sx; else x1 = x0 + lb.w * sx
       if (h.includes('t')) y0 = y1 - lb.h * sy; else y1 = y0 + lb.h * sy
     }
-    const sc = scaleShape(orig, sx, sy)
+    const sc = scaleShape(orig, sx, sy, { handle: h })
     const nb = localBounds(sc)
     // the new box's centre in the starting frame, then on the page; the
     // shape then pivots on that centre, so the box lands where it was framed
@@ -1858,7 +1861,21 @@ export class Editor {
     for (const [which, s] of this._resizeHandles(one, b)) {
       if (Math.abs(s.x - sx) <= HANDLE && Math.abs(s.y - sy) <= HANDLE) return { kind: 'resize', which }
     }
-    if (rotatable) return this._hitRotateZone(one, b, sx, sy)
+    if (rotatable) {
+      const z = this._hitRotateZone(one, b, sx, sy)
+      if (z) return z
+    }
+    // a text box's whole top and bottom edge is its type-size handle
+    if (one?.type === 'text') {
+      const p = this.screenToPage(sx, sy)
+      const l = one.rot ? toLocal(one, p.x, p.y) : { x: p.x - one.x, y: p.y - one.y }
+      const lb = localBounds(one)
+      const tol = HANDLE / this.camera.z
+      if (l.x >= lb.x && l.x <= lb.x + lb.w) {
+        if (Math.abs(l.y - lb.y) <= tol) return { kind: 'resize', which: 't' }
+        if (Math.abs(l.y - (lb.y + lb.h)) <= tol) return { kind: 'resize', which: 'b' }
+      }
+    }
     return null
   }
   // the invisible rotate zones: just outside each corner of the box (the
@@ -1883,10 +1900,10 @@ export class Editor {
     return null
   }
   // the resize handles on screen, [which, {x, y}]: a rotated single shape's
-  // ride its own frame, otherwise they sit on the selection's box. Text has
-  // no top/bottom handles — its height is its lines.
+  // ride its own frame, otherwise they sit on the selection's box. On text
+  // the top and bottom ones set the type size (see scaleShape).
   _resizeHandles(one, b) {
-    const names = one?.type === 'text' ? ['tl', 'tr', 'bl', 'br', 'l', 'r'] : Object.keys(BOX_HANDLES)
+    const names = Object.keys(BOX_HANDLES)
     if (one && one.rot) return this._boxHandles(one).filter(([which]) => names.includes(which))
     const tl = this.pageToScreen(b.x, b.y)
     const br = this.pageToScreen(b.x + b.w, b.y + b.h)

@@ -29,6 +29,9 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **Type size from the edge.** A text box's top and bottom edges (the whole
+  edge, not just the square) are a size handle: drag to grow or shrink the
+  type, the wrap width stays, the far edge stays put.
 - **Font and alignment in the styles panel.** The four type families
   (hand-drawn, sans, serif, mono) and text alignment (left / centre /
   right) get rows in the styles popover; `setStyle('font' | 'align', …)`.

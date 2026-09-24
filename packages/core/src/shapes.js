@@ -779,7 +779,9 @@ export function marqueeHits(shape, rect) {
 
 // scale a shape's local geometry about the LOCAL origin; caller repositions
 // x/y. Returns a new shape.
-export function scaleShape(shape, sx, sy) {
+// opts.handle: which handle pulled — text takes its top/bottom edge as a
+// type-size handle (the font scales, the wrap width stays)
+export function scaleShape(shape, sx, sy, { handle } = {}) {
   const p = shape.props
   switch (shape.type) {
     case 'draw':
@@ -799,6 +801,9 @@ export function scaleShape(shape, sx, sy) {
     case 'image':
       return { ...shape, props: { ...p, w: Math.max(1, p.w * sx), h: Math.max(1, p.h * sy) } }
     case 'text': {
+      if (handle === 't' || handle === 'b') {
+        return { ...shape, props: { ...p, scale: Math.max(0.2, (p.scale || 1) * sy) } }
+      }
       if (Math.abs(sx - sy) > 1e-9) {
         // a side pull sets the wrap width; the type keeps its size and
         // reflows, so the pulled edge lands where the pointer is
