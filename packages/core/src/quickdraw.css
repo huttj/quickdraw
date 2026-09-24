@@ -429,7 +429,9 @@
   overflow: hidden;
   transition: background 320ms ease, border-color 320ms ease, box-shadow 320ms ease;
 }
-.qd-minimap-canvas { display: block; width: 180px; height: 120px; cursor: crosshair; }
+/* a hand: you drag the view around on it */
+.qd-minimap-canvas { display: block; width: 180px; height: 120px; cursor: grab; }
+.qd-minimap-canvas.qd-dragging { cursor: grabbing; }
 .qd-minimap.qd-folded .qd-minimap-canvas { display: none; }
 .qd-minimap-toggle {
   position: absolute;

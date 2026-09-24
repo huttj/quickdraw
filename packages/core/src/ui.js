@@ -822,10 +822,12 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     e.stopPropagation()
     if (e.button !== 0) return
     try { mmCanvas.setPointerCapture(e.pointerId) } catch {}
+    mmCanvas.classList.add('qd-dragging')
     mmCenterOn(mmPageAt(e), 0)
     const move = (ev) => { if (ev.pointerId === e.pointerId) mmCenterOn(mmPageAt(ev), 0) }
     const up = (ev) => {
       if (ev.pointerId !== e.pointerId) return
+      mmCanvas.classList.remove('qd-dragging')
       mmCanvas.removeEventListener('pointermove', move)
       mmCanvas.removeEventListener('pointerup', up)
       mmCanvas.removeEventListener('pointercancel', up)
