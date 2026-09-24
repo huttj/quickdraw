@@ -533,8 +533,7 @@ export class Editor {
   // The selection moves as a block, relative order kept. A one-step move hops
   // the block over its nearest unselected neighbour and lands on fractional
   // z between the shapes around it — only the moved shapes change, so the
-  // diff stays small for sync. Highlights live on their own layer under the
-  // ink (see shapesSorted), so they only ever trade places with highlights.
+  // diff stays small for sync.
   bringToFront() { this._reorder(1, true) }
   sendToBack() { this._reorder(-1, true) }
   bringForward() { this._reorder(1, false) }
@@ -542,14 +541,12 @@ export class Editor {
   _reorder(dir, toEnd) {
     const sel = this.selection
     if (!sel.size) return
-    const layer = (s) => (s.type === 'highlight' ? 0 : 1)
-    const all = this.shapesSorted()
+    const list = this.shapesSorted()
     const moves = [] // [picked[], below, above]
-    for (const L of [0, 1]) {
-      const list = all.filter((s) => layer(s) === L)
+    {
       const picked = list.filter((s) => sel.has(s.id))
       const rest = list.filter((s) => !sel.has(s.id))
-      if (!picked.length || !rest.length) continue
+      if (!picked.length || !rest.length) return
       let below = null, above = null // the unselected neighbours the block lands between
       if (toEnd) {
         if (dir > 0) below = rest[rest.length - 1]
@@ -558,12 +555,12 @@ export class Editor {
         // past the first unselected shape above the lowest selected one
         const from = list.indexOf(picked[0])
         below = list.slice(from + 1).find((s) => !sel.has(s.id))
-        if (!below) continue // already on top
+        if (!below) return // already on top
         above = rest[rest.indexOf(below) + 1] || null
       } else {
         const from = list.indexOf(picked[picked.length - 1])
         above = list.slice(0, from).reverse().find((s) => !sel.has(s.id))
-        if (!above) continue // already at the bottom
+        if (!above) return // already at the bottom
         below = rest[rest.indexOf(above) - 1] || null
       }
       moves.push([picked, below, above])
@@ -658,14 +655,11 @@ export class Editor {
   }
 
   shapesSorted() {
-    // highlighter lives under the ink, like on paper — highlights render
-    // first (in their own z order), everything else above
-    return this.store.shapes().sort(
-      (a, b) =>
-        (a.type === 'highlight' ? 0 : 1) - (b.type === 'highlight' ? 0 : 1) ||
-        a.z - b.z ||
-        (a.id < b.id ? -1 : 1)
-    )
+    // plain z order, highlights included: their multiply blend makes a
+    // highlight look the same over ink as under it, and keeps it on top of
+    // a picture it was drawn over — the marker-on-paper feel without a
+    // separate layer (tldraw does the same)
+    return this.store.shapes().sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1))
   }
   // The shape under a page point, topmost first. `inside` (the select tool)
   // also takes the empty middle of a hollow shape, and the empty space
@@ -1366,6 +1360,7 @@ export class Editor {
           center: { x: b.x + b.w / 2, y: b.y + b.h / 2 },
           start: Math.atan2(p.y - (b.y + b.h / 2), p.x - (b.x + b.w / 2)),
           orig: this._snapshotSelection(),
+          corner: h.corner || null, // the zone the drag started in: its cursor turns with the shape
         }
         this._syncCursor(h.cursor || 'grabbing')
       } else if (h.kind === 'handle') {
@@ -1579,6 +1574,12 @@ export class Editor {
     const ss = this.session
     let delta = Math.atan2(p.y - ss.center.y, p.x - ss.center.x) - ss.start
     if (e.shiftKey) delta = Math.round(delta / (Math.PI / 12)) * (Math.PI / 12)
+    if (ss.corner) {
+      // the cursor turns with the frame it's turning
+      const base = { tl: 0, tr: 90, br: 180, bl: 270 }[ss.corner]
+      const one = ss.orig.size === 1 ? [...ss.orig.values()][0] : null
+      this._syncCursor(rotateCursor(base + (((one?.rot || 0) + delta) * 180) / Math.PI))
+    }
     this.store.transact(() => {
       for (const [id, orig] of ss.orig) {
         if (!this.store.has(id)) continue

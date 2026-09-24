@@ -105,14 +105,14 @@ describe('drawing', () => {
     expect(editor.store.shapes().length).toBe(0)
   })
 
-  it('the highlighter makes highlight shapes that sort under ink', () => {
+  it('highlights keep their place in the z order (the multiply blend does the marker look)', () => {
     editor.setTool('draw')
     drag(editor, [[10, 10], [60, 60]])
     editor.setTool('highlight')
     drag(editor, [[10, 20], [60, 70]])
     const sorted = editor.shapesSorted()
-    expect(sorted[0].type).toBe('highlight') // renders first, under the ink
-    expect(sorted[1].type).toBe('draw')
+    expect(sorted[0].type).toBe('draw')
+    expect(sorted[1].type).toBe('highlight') // drawn later, so on top — of a picture too
   })
 })
 
@@ -844,15 +844,16 @@ describe('z order', () => {
     expect(order()).toEqual([a.id, c.id, b.id, d.id])
   })
 
-  it('highlights only ever trade places with highlights', () => {
+  it('highlights reorder like any other shape', () => {
     const a = rectAt(editor, 10, 10)
     editor.setTool('highlight')
     drag(editor, [[10, 20], [60, 70]])
     const h = editor.store.shapes().find((s) => s.type === 'highlight')
     editor.setSelection([h.id])
-    editor.bringToFront()
-    // z may or may not move, but the ink stays on top
+    editor.sendToBack()
     expect(editor.shapesSorted().map((s) => s.id)).toEqual([h.id, a.id])
+    editor.bringToFront()
+    expect(editor.shapesSorted().map((s) => s.id)).toEqual([a.id, h.id])
   })
 
   it('a gap split too many times is renormalized rather than lost', () => {
@@ -1453,10 +1454,17 @@ describe('rotate zones (mouse)', () => {
     // inside the box near a corner is not a zone; far outside isn't either
     expect(editor._hitHandle(112, 112)).toBe(null)
     expect(editor._hitHandle(60, 60)).toBe(null)
-    // hovering there shows the rotate cursor; dragging there rotates about the centre
+    // hovering there shows the rotate cursor; dragging there rotates about
+    // the centre, and the cursor turns along with the shape
     editor._hoverCursor({ target: editor.canvas, clientX: 86, clientY: 86 })
     expect(editor.container.style.cursor).toContain('data:image/svg+xml')
-    drag(editor, [[86, 86], [150, 40]]) // from the top-left zone round to straight above the centre
+    const atRest = editor.container.style.cursor
+    pid++
+    editor._pointerDown({ ...ev(86, 86), target: editor.canvas })
+    editor._pointerMove({ ...ev(150, 40), target: editor.canvas })
+    expect(editor.container.style.cursor).toContain('data:image/svg+xml')
+    expect(editor.container.style.cursor).not.toBe(atRest)
+    editor._pointerUp({ ...ev(150, 40), target: editor.canvas })
     const s = editor.store.get(a.id)
     const turned = Math.atan2(40 - 130, 150 - 150) - Math.atan2(86 - 130, 86 - 150)
     expect(s.rot).toBeCloseTo(turned, 5)

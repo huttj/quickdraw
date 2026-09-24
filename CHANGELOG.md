@@ -31,8 +31,12 @@ versioned in lockstep.
   `editor.dropShape(kind, at)` for custom UIs.
 - **Rotate from the corners.** With a mouse there's no knob: the cursor
   becomes tldraw's corner rotate arrow just outside each corner of the
-  selection, aligned to that corner, and dragging there rotates. Touch
-  boards keep the knob.
+  selection, aligned to that corner, and turns with the shape as you drag.
+  Touch boards keep the knob.
+- **Highlights keep their z order.** They used to render in a layer under
+  everything else; now they sit where they were drawn, like in tldraw — the
+  multiply blend still reads as marker over ink, and a highlight drawn over
+  a picture stays on top of it (a pasted tldraw board's highlights included).
 - **Marked text.** Text, notes and shape labels can carry bold, italic,
   underline, strike, code, highlight and link runs (`props.marks` /
   `props.labelMarks`); they render on the canvas and in SVG, survive
