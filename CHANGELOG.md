@@ -41,9 +41,10 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
-- **The text surface matches the canvas on phones.** iOS could boost the
-  surface's type at small zooms, so editing text looked a size larger than
-  the drawn text and jumped with the zoom; the surface now pins its size.
+- **The text surface matches the canvas at every zoom.** It is laid out at
+  the shape's own size and scaled by the camera with a transform. Type set
+  in zoomed pixels had its line boxes snapped to whole pixels (WebKit), so
+  the block breathed and jumped against the drawn text while zooming.
 - **Notes honour the align style.** Left, centre or right, like text; a
   note without one is centred, as before. The styles panel applies it to a
   selected note.

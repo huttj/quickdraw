@@ -1987,21 +1987,27 @@ describe('editing in place', () => {
     editor.setTool('select')
     editor.editShapeText('t')
     const st = editor.editing.textarea.style
-    expect(st.transform).toBe('rotate(0.5rad)')
+    // the surface is laid out at native size and scaled by the camera; it turns about the shape's centre
     const lb = localBounds(editor.store.get('t'))
-    expect(st.transformOrigin).toBe(`${lb.w / 2}px ${lb.h / 2}px`)
+    expect(st.transform).toBe(`translate(${lb.w / 2}px, ${lb.h / 2}px) rotate(0.5rad) translate(${-lb.w / 2}px, ${-lb.h / 2}px) scale(1)`)
+    expect(st.transformOrigin).toBe('0 0')
     editor._commitText()
     // a note's surface is inset by its padding, so the pivot is offset back to the note's centre
     editor.store.put({ id: 'n', typeName: 'shape', type: 'note', x: 0, y: 0, rot: 1, z: 2, props: { text: 'n', color: 'yellow', size: 'm', font: 'draw', scale: 1 } })
     editor.editShapeText('n')
     const ns = editor.editing.textarea.style
-    expect(ns.transform).toBe('rotate(1rad)')
-    expect(parseFloat(ns.transformOrigin)).toBeCloseTo(100 - 20) // centre x minus the 20px inset
+    expect(ns.transform.startsWith('translate(80px, ')).toBe(true) // centre x minus the 20px inset
+    expect(ns.transform).toContain('rotate(1rad)')
     editor._commitText()
-    // unrotated: no transform
+    // unrotated: only the camera's scale; zooming scales the surface, never its type
     editor.store.put({ id: 'p', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 3, props: { text: 'flat', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
     editor.editShapeText('p')
-    expect(editor.editing.textarea.style.transform).toBe('')
+    expect(editor.editing.textarea.style.transform).toBe('scale(1)')
+    const font1 = editor.editing.textarea.style.font
+    editor.setCamera({ x: 0, y: 0, z: 2 })
+    editor._layoutTextEditor()
+    expect(editor.editing.textarea.style.transform).toBe('scale(2)')
+    expect(editor.editing.textarea.style.font).toBe(font1)
     editor._commitText()
   })
 
