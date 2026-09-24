@@ -2,15 +2,17 @@
 // boards through here — same editor, same UI, same feel — and so can any
 // plain web page: every module is dependency-free ESM.
 
-export { Editor, TOOLS } from './editor.js'
+export { Editor, TOOLS, ALIGN_MODES } from './editor.js'
 export { Store, newId, isDiffEmpty, invertDiff, composeDiff } from './store.js'
 export { buildUI } from './ui.js'
 export {
   themeOf, THEMES, COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS,
   SIZES, FONT_SIZES, FONTS,
 } from './palette.js'
-export { pageBounds, localBounds, drawShape, hitShape } from './shapes.js'
+export { pageBounds, localBounds, drawShape, hitShape, imageFrame } from './shapes.js'
 export { strokeOutline } from './freehand.js'
+export { sceneToSvg, shapeToSvg } from './svg.js'
+export { BINDABLE, anchorAt, anchorPoint, boundTerminals, rebindArrow, outlinePolygon } from './bindings.js'
 
 import { Editor } from './editor.js'
 import { buildUI } from './ui.js'

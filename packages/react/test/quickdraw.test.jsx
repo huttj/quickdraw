@@ -15,7 +15,7 @@ describe('<Quickdraw />', () => {
     const { container, unmount } = render(<Quickdraw onMount={onMount} />)
     expect(onMount).toHaveBeenCalledTimes(1)
     const [editor, ui] = onMount.mock.calls[0]
-    expect(editor.tool).toBe('draw')
+    expect(editor.tool).toBe('select')
     expect(ui.setHidden).toBeTypeOf('function')
     expect(container.querySelectorAll('canvas').length).toBe(2)
     expect(container.querySelector('.qd-dock')).toBeTruthy()

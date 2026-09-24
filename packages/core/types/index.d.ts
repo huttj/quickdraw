@@ -21,6 +21,33 @@ export type GridId = 'none' | 'lines' | 'ruled' | 'dots' | 'crosses' | 'iso'
 export interface Bounds { x: number; y: number; w: number; h: number }
 export interface Camera { x: number; y: number; z: number }
 
+export type AlignMode = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+export type DistributeAxis = 'horizontal' | 'vertical'
+/** What a dragged toolbar item drops as: a tool name or a specific geo kind. */
+export type DropKind = 'text' | 'note' | 'arrow' | 'line' | 'geo' | GeoId
+
+/**
+ * An image's crop window, as fractions of the source picture (0–1).
+ * Absent on an image shape means the whole picture.
+ */
+export interface CropRect { x: number; y: number; w: number; h: number }
+
+/**
+ * One end of an arrow or line tied to a shape: the shape's id and the anchor
+ * it points at, as fractions of the shape's box. Lives on the arrow's props
+ * as `startBind` / `endBind`; the end itself is re-solved onto the shape's
+ * outline whenever the shape changes.
+ */
+export interface ArrowBinding { id: string; nx: number; ny: number }
+
+/** Payload of the 'contextmenu' event: where (screen + page) and what was under the pointer. */
+export interface ContextMenuEvent {
+  x: number
+  y: number
+  page: { x: number; y: number }
+  hit: ShapeRecord | null
+}
+
 export interface Styles {
   color: ColorId
   size: SizeId
@@ -41,6 +68,8 @@ export interface ShapeRecord {
   y: number
   rot: number
   z: number
+  /** Members of a group share an id; there is no group record. */
+  groupId?: string
   props: Record<string, any>
 }
 
@@ -93,6 +122,7 @@ export interface ScribbleStroke {
 }
 
 export const TOOLS: ToolId[]
+export const ALIGN_MODES: AlignMode[]
 export const COLOR_IDS: ColorId[]
 export const SIZE_IDS: SizeId[]
 export const DASH_IDS: DashId[]
@@ -114,14 +144,45 @@ export function composeDiff(a: Diff, b: Diff): Diff
 export function localBounds(shape: ShapeRecord): Bounds
 /** Axis-aligned page bounds of a shape, rotation included. */
 export function pageBounds(shape: ShapeRecord): Bounds
+/** The full source picture of an image shape, laid out in the shape's local frame (crop undone). */
+export function imageFrame(shape: ShapeRecord): Bounds
 /** Render one shape into a 2d context already transformed to page space. */
 export function drawShape(
   ctx: CanvasRenderingContext2D,
   shape: ShapeRecord,
-  opts: { theme: Theme; store: Store; zoom?: number; ghost?: boolean; onAssetLoad?: () => void }
+  opts: {
+    theme: Theme
+    store: Store
+    zoom?: number
+    ghost?: boolean
+    /** Crop mode: draw the whole picture faintly around the crop window. */
+    cropPreview?: boolean
+    onAssetLoad?: () => void
+  }
 ): void
 /** Point hit-test in page space. */
 export function hitShape(shape: ShapeRecord, px: number, py: number, tol: number, store: Store): boolean
+
+/** Shape types an arrow end can tie to. */
+export const BINDABLE: Set<ShapeType>
+/** Page point → anchor in the shape's box; points near the middle snap to the centre unless `precise`. */
+export function anchorAt(shape: ShapeRecord, px: number, py: number, opts?: { precise?: boolean }): { nx: number; ny: number }
+/** The anchor back on the page. */
+export function anchorPoint(shape: ShapeRecord, nx: number, ny: number): { x: number; y: number }
+/** The shape's outline as a page-space polygon, flat [x, y, ...]. */
+export function outlinePolygon(shape: ShapeRecord): number[]
+/** Where an arrow's bindings put its ends (null when nothing is bound). */
+export function boundTerminals(arrow: ShapeRecord, store: Store): { start: { x: number; y: number }; end: { x: number; y: number } } | null
+/** The arrow re-solved against the store (same record when nothing changes). */
+export function rebindArrow(arrow: ShapeRecord, store: Store): ShapeRecord
+
+/** One shape as an SVG `<g>` string. `defs` collects shared definitions (patterns, filters, clips) by id. */
+export function shapeToSvg(shape: ShapeRecord, opts: { theme: Theme; store: Store; defs: Map<string, string> }): string
+/** A drawn-order list of shapes as a complete SVG document string (null when empty). */
+export function sceneToSvg(
+  shapes: ShapeRecord[],
+  opts: { theme: Theme; store: Store; grid?: GridId; background?: boolean; margin?: number }
+): string | null
 
 /**
  * Turn a raw pointer trail ([x, y, pressure, ...] triplets) into a filled
@@ -166,6 +227,12 @@ export class Store {
   remove(ids: string[], source?: DiffSource): void
   /** Apply a diff produced elsewhere (a peer, an op log). */
   applyDiff(diff: Diff, source?: DiffSource): void
+  /**
+   * Register a reactor: runs inside every local transaction, after its body
+   * and before it commits, and may write more records into it (derived state
+   * lands in the same diff and undo step). Runs until a pass writes nothing.
+   */
+  react(fn: (diff: Diff) => void): () => void
 
   beginBatch(): void
   endBatch(): void
@@ -195,6 +262,7 @@ export interface EditorOptions {
 export type EditorEvent =
   | 'change' | 'history' | 'camera' | 'tool' | 'styles' | 'selection'
   | 'theme' | 'grid' | 'edit' | 'scribbles' | 'penmode' | 'help'
+  | 'crop' | 'contextmenu'
 
 /**
  * The editor: camera, tools, selection, input and rendering over a Store.
@@ -216,7 +284,14 @@ export class Editor {
   tool: ToolId
   selection: Set<string>
   penMode: boolean
+  /** The group a double-click dived into (its members select one at a time), or null. */
+  focusedGroup: string | null
+  /** The image in crop mode, or null. */
+  cropping: { id: string } | null
+  /** While an arrow end is being dragged: the id of the shape it would tie to, or null. */
+  bindHover: string | null
 
+  on(ev: 'contextmenu', fn: (e: ContextMenuEvent) => void): () => void
   on(ev: EditorEvent, fn: (...args: any[]) => void): () => void
   emit(ev: EditorEvent, ...args: any[]): void
 
@@ -231,6 +306,8 @@ export class Editor {
   contentBounds(): Bounds | null
   fitContent(opts?: { margin?: number; maxZoom?: number; animate?: number; ease?: number }): void
   followBounds(b: Bounds, opts?: { animate?: number; ease?: number }): void
+  /** Back to 1:1 about the middle of the view (⇧0). */
+  resetZoom(opts?: { animate?: number }): void
 
   // tools / styles
   setTool(tool: ToolId): void
@@ -251,10 +328,46 @@ export class Editor {
   clearBoard(): void
   selectAll(): void
   duplicateSelection(offset?: number): void
-  bringToFront(): void
-  sendToBack(): void
+  /** Open the text surface on a text, note, or geo (label) shape. */
+  editShapeText(id: string): void
   shapesSorted(): ShapeRecord[]
   hitTest(px: number, py: number): ShapeRecord | null
+
+  // z order — the selection moves as a block, relative order kept
+  bringToFront(): void
+  sendToBack(): void
+  /** One step up past the nearest unselected neighbour. */
+  bringForward(): void
+  /** One step down past the nearest unselected neighbour. */
+  sendBackward(): void
+
+  // align / distribute — each group counts as one unit, bounds are page-space
+  alignSelection(mode: AlignMode): void
+  /** Even gaps between neighbours; needs three or more units. */
+  distributeSelection(axis: DistributeAxis): void
+
+  // groups — a shared `groupId` on the members, no container record
+  /** Ids of every shape in a group. */
+  groupMembers(groupId: string): string[]
+  /** Group ids present in the selection. */
+  selectionGroups(): string[]
+  canGroup(): boolean
+  canUngroup(): boolean
+  /** Group the selection (⌘G). Groups are flat: grouping groups merges them. */
+  groupSelection(): void
+  /** Dissolve every group in the selection (⇧⌘G). */
+  ungroupSelection(): void
+
+  // image crop — one undo step for the whole crop session
+  /** Enter crop mode on an image (double-click, Enter, or the context menu). */
+  startCrop(id: string): void
+  /** Leave crop mode, keeping the crop. */
+  endCrop(): void
+  /** Back to the whole picture, the window's centre staying put. */
+  resetCrop(id?: string): void
+
+  /** Drop a ready-made shape at a page point — what a tool dragged off the dock does. Returns the new id. */
+  dropShape(kind: DropKind, at: { x: number; y: number }): string | null
 
   // laser scribbles (live pointer trails, not part of the document)
   setRemoteScribbles(list: ScribbleStroke[]): void
@@ -268,6 +381,8 @@ export class Editor {
 
   /** Render the drawing to a PNG blob (null when the board is empty). */
   exportImage(opts?: { background?: boolean; scale?: number; margin?: number; ids?: Set<string> | null }): Promise<Blob | null>
+  /** The drawing as an SVG document string — vectors all the way (null when empty). */
+  exportSvg(opts?: { background?: boolean; margin?: number; ids?: Set<string> | null }): string | null
 
   // rendering
   requestRender(): void
@@ -296,7 +411,8 @@ export interface BoardUI {
 
 export interface BuildUIOptions {
   hidden?: boolean
-  onSave?: (blob: Blob, background: boolean) => void
+  /** Receives every export instead of the browser download: a PNG blob, or an SVG blob when `format` is 'svg'. */
+  onSave?: (blob: Blob, background: boolean, format: 'png' | 'svg') => void
   /** Show the theme switch in the board menu (default true). */
   themeToggle?: boolean
   /** Show the grid switch in the board menu (default true). */
@@ -320,7 +436,8 @@ export interface QuickdrawInstance {
 
 export interface CreateQuickdrawOptions extends EditorOptions {
   hideUi?: boolean
-  onSave?: (blob: Blob, background: boolean) => void
+  /** Receives every export instead of the browser download: a PNG blob, or an SVG blob when `format` is 'svg'. */
+  onSave?: (blob: Blob, background: boolean, format: 'png' | 'svg') => void
   themeToggle?: boolean
   gridControl?: boolean
   /**

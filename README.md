@@ -51,7 +51,8 @@ A simple, joyful drawing experience:
 - **Grid backdrops** — plain, ruled lines, notebook rules, dots, crosses
   (blueprint), and isometric; default is `lines`; spacing adapts to the zoom
   and fades in rather than popping
-- **PNG export** — whole board or selection, on paper or transparent
+- **Arrows that bind** — draw from a shape to a shape and the arrow follows them
+- **PNG & SVG export** — whole board or selection, on paper or transparent
 - **A responsive floating toolbar** that sheds tools gracefully as the frame
   narrows — or hide it and build your own from the headless API
 - **Real-time sync built into the data model** — every change emits a
@@ -186,7 +187,10 @@ socket.onmessage = (e) => store.applyDiff(JSON.parse(e.data), 'remote')
 | `T` / `N` | Text / sticky note |
 | `⌘Z` / `⇧⌘Z` | Undo / redo |
 | `⌘A` `⌘C` `⌘X` `⌘V` `⌘D` | Select all, copy, cut, paste, duplicate |
-| `]` / `[` | Bring to front / send to back |
+| `]` / `[` (+`Shift`) | Bring forward / send backward (to front / to back) |
+| `⌘G` / `⇧⌘G` | Group / ungroup |
+| `⌥A` `⌥D` `⌥W` `⌥S` `⌥H` `⌥V` | Align left / right / top / bottom / center / middle |
+| Right-click or long press | Context menu |
 | Arrows (+`Shift`) | Nudge selection |
 | `⇧1` / `⇧0` | Zoom to fit / reset zoom |
 | `⌘+` / `⌘−` | Zoom in / out |

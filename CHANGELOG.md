@@ -4,6 +4,59 @@ All notable changes to the `@quickdrawjs/*` packages are documented here.
 The project follows [semver](https://semver.org); the three packages are
 versioned in lockstep.
 
+## Unreleased
+
+- **Image cropping.** Double-click an image (or press Enter, or pick "Crop
+  image" from the context menu) to enter crop mode: the whole picture shows
+  faintly around the window, the handles trim it, and a drag inside slides
+  the picture behind it. The crop is stored as `props.crop`, fractions of
+  the source; the whole session is one undo step. `startCrop` / `endCrop` /
+  `resetCrop` on the editor.
+- **Groups.** ⌘G groups the selection, ⇧⌘G ungroups. Members share a
+  `groupId` (no container record, so the wire format is unchanged).
+  Selecting a member selects the group; double-click dives in, Esc steps
+  back out. Duplicating or pasting a group makes a new group.
+- **Context menu** on right-click and on a long press with a finger: cut /
+  copy / paste / duplicate / delete, group / ungroup, a Reorder flyout, an
+  Align flyout, crop, edit text, export — or paste / select all / zoom /
+  export / clear over empty paper. Hosts with their own chrome get a
+  `'contextmenu'` editor event.
+- **Alignment and distribution.** `alignSelection(mode)` and
+  `distributeSelection(axis)`, with tldraw's ⌥A/D/W/S/H/V and ⇧⌥H/V keys.
+- **One-step ordering.** `bringForward` / `sendBackward` step past one
+  neighbour; only the moved shapes change z. Keys follow tldraw: `]` / `[`
+  step, `⇧]` / `⇧[` go all the way. (Previously `]` / `[` went all the way.)
+- **Drag tools onto the board.** Pull the shape, arrow, line, text or note
+  tool off the dock and let go on the board to drop a ready-made one there;
+  `editor.dropShape(kind, at)` for custom UIs.
+- **Arrows bind to shapes.** An arrow or line drawn from inside a shape, or
+  ended over one, ties itself to it and follows the shape as it moves,
+  resizes or rotates; the end sits on the shape's outline. Drag an end onto
+  another shape to re-tie it, or onto empty paper to free it; ⌥ aims at the
+  exact point. Stored on the arrow's props as `startBind` / `endBind`.
+  Under the hood: `store.react()` runs derived-record updates inside the
+  same transaction, so a moved shape and its arrows are one diff.
+- **SVG export.** "Export as SVG" in the board and context menus,
+  `editor.exportSvg()` from code, `exportSvg()` over the React Native
+  bridge, and `sceneToSvg` / `shapeToSvg` for headless use. `onSave` now
+  receives a third argument, `format` ('png' | 'svg').
+- **Rotated shapes resize.** A rotated shape shows its handles on its own
+  frame and resizes in it; the opposite edge stays put. Its rotate knob now
+  turns with the frame instead of hovering over the bounding box.
+- **Resize pinning fixed; resize about the centre.** A side pull on text now
+  sets its wrap width (the type keeps its size and reflows; text has no
+  top/bottom handles); a side pull on a sticky note scales it as a whole.
+  In both the far edge stays pinned, as it always did for shapes and
+  images. ⌥ or Ctrl resizes about the centre. Handle squares turn with a
+  rotated shape.
+- **⌥ copies mid-drag.** Alt/Option is live for the whole move: while it's
+  down the drag is a copy (the originals stay put), let go and it's a move
+  again. Whatever is on when the button comes up is what's kept.
+- **The pointer is the default tool again** when a board mounts (0.1.3 had
+  switched it to the pen). `editor.setTool('draw')` after mount if you
+  want the old behaviour.
+- New: `editor.resetZoom()`, `editor.editShapeText(id)`, `imageFrame()`.
+
 ## 0.1.3 — 2026-08-01
 
 - The pen (draw) tool is now selected by default when a board mounts,

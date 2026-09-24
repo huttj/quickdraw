@@ -30,6 +30,8 @@ export interface QuickdrawRef {
   fitContent(animate?: number): void
   getSnapshot(): Promise<Snapshot>
   exportPng(opts?: { background?: boolean; scale?: number; margin?: number }): Promise<string | null>
+  /** The board as an SVG document string (null when empty). */
+  exportSvg(opts?: { background?: boolean; margin?: number }): Promise<string | null>
 }
 
 export interface QuickdrawProps {

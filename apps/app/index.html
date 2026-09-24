@@ -105,13 +105,17 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       padding: 6px;
+      /* the menu lives outside the file bar, so it names its own type: the
+         `font` shorthand can't take `inherit` as a family, and the rows fell
+         back to the browser's serif */
+      font: 500 14px/1.2 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
       transition: background 320ms ease, color 320ms ease, border-color 320ms ease, box-shadow 320ms ease;
     }
     .qd-files-menu[hidden] { display: none; }
     .qd-files-menu .qd-file-row {
       display: flex; align-items: center; gap: 8px;
       padding: 8px 10px; border-radius: 8px; cursor: pointer;
-      font: 500 14px/1.2 inherit;
+      font: inherit;
     }
     .qd-file-row:hover { background: var(--bar-hover); }
     .qd-file-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -122,7 +126,7 @@
       appearance: none; border: none; background: transparent; cursor: pointer;
       color: var(--del-ink); border-radius: 6px; flex: none;
       width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-      font: 600 14px/1 inherit; padding: 0;
+      font: inherit; font-weight: 600; line-height: 1; padding: 0;
     }
     .qd-file-row .del:hover { color: var(--del-hot); background: var(--del-hot-bg); }
 

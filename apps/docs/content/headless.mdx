@@ -55,9 +55,96 @@ editor.selection                   // a Set of ids
 editor.selectionBounds()           // page-space bounds or null
 editor.duplicateSelection()
 editor.deleteSelection()
-editor.bringToFront(); editor.sendToBack()
 editor.on('selection', refresh)
 ```
+
+## Arranging
+
+```js
+editor.bringToFront(); editor.sendToBack()        // all the way
+editor.bringForward(); editor.sendBackward()      // one step past a neighbour
+
+editor.alignSelection('left')      // 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+editor.distributeSelection('horizontal')   // or 'vertical' — needs three or more
+```
+
+Alignment works on page bounds (rotation included), and a group counts as
+one unit, so its members keep their layout.
+
+## Groups
+
+```js
+editor.groupSelection()            // ⌘G — needs two or more shapes
+editor.ungroupSelection()          // ⇧⌘G
+editor.canGroup(); editor.canUngroup()
+editor.groupMembers(groupId)       // ids
+editor.selectionGroups()           // group ids in the selection
+```
+
+A group is a shared `groupId` on its member records — there is no group
+record, so persistence and sync consumers see nothing new. Selecting any
+member selects the whole group; double-clicking a member focuses the group
+(`editor.focusedGroup`) so its members can be picked one at a time, and
+`Esc` steps back out. Groups are flat: grouping a selection that contains
+groups merges them into one.
+
+## Arrow bindings
+
+An arrow (or line) drawn from inside a shape, or ended over one, ties
+itself to it: the end lands on the shape's outline and follows the shape
+when it moves, resizes or rotates. Drag an end handle onto another shape
+to re-tie it, or onto empty paper to free it; hold `⌥` to aim at the exact
+point instead of snapping to the shape's centre. Moving a bound arrow on
+its own lets go of the shape; moving both together keeps the tie.
+
+```js
+arrow.props.startBind   // { id, nx, ny } — the shape and the anchor in its box (0–1)
+arrow.props.endBind
+editor.bindHover        // while dragging an end: the shape it would tie to
+```
+
+The binding is plain data on the arrow's props; the end position is derived
+from it by a store reactor (`store.react`) inside the same transaction, so
+a moved shape and its arrows are one diff and one undo step.
+
+## Image crop
+
+```js
+editor.startCrop(id)               // double-click, Enter, or the context menu
+editor.endCrop()                   // keep the crop (Esc, Enter, click away)
+editor.resetCrop(id)               // the whole picture again
+editor.cropping                    // { id } while in crop mode, else null
+editor.on('crop', refresh)
+```
+
+In crop mode the whole picture shows faintly around the window, the box
+handles trim it, and a drag inside slides the picture behind it. The crop
+is stored on the image's props as `crop: { x, y, w, h }` — fractions of the
+source, absent for the whole picture — and the whole session undoes as one
+step.
+
+## Dropping shapes
+
+```js
+editor.dropShape('rectangle', { x, y })   // any geo kind, or 'geo' for the current one
+editor.dropShape('arrow', at); editor.dropShape('text', at); editor.dropShape('note', at)
+```
+
+This is what a tool dragged off the stock dock does on release: a
+ready-made shape centered on the point, in the current styles, selected —
+text and notes already open for typing. Returns the new id.
+
+## Context menu
+
+```js
+editor.on('contextmenu', ({ x, y, page, hit }) => showMyMenu(x, y))
+```
+
+Fires on right-click and on a long press with a finger. By the time it
+fires the editor has settled the selection: the shape under the pointer
+(with its group) is selected unless it already was, and empty paper clears
+the selection. `x`/`y` are screen coordinates inside the container, `page`
+is the same point on the board, `hit` the shape record or `null`.
 
 ## Camera
 

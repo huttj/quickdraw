@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout } from '../src/shapes.js'
+import { localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, imageFrame, drawShape } from '../src/shapes.js'
 import { Store } from '../src/store.js'
+import { THEMES } from '../src/palette.js'
 
 const geo = (over = {}, props = {}) => ({
   id: 'g1', typeName: 'shape', type: 'geo', x: 10, y: 10, rot: 0, z: 1,
@@ -137,5 +138,35 @@ describe('text layout', () => {
     expect(mk('').lines.length).toBe(1)
     expect(mk('a\nb\nc').lines.length).toBe(3)
     expect(mk('a\nb\nc').h).toBeGreaterThan(mk('a').h)
+  })
+})
+
+describe('image crop frame', () => {
+  const img = (crop, w = 60, h = 100) => ({
+    id: 'i', typeName: 'shape', type: 'image', x: 0, y: 0, rot: 0, z: 1,
+    props: { w, h, assetId: 'a', ...(crop ? { crop } : {}) },
+  })
+
+  it('an uncropped image is its own frame', () => {
+    expect(imageFrame(img(null))).toEqual({ x: 0, y: 0, w: 60, h: 100 })
+  })
+
+  it('the frame is the box scaled up by the crop and pushed back by its offset', () => {
+    // the box shows the right 60% of the width and the bottom half of the height
+    const f = imageFrame(img({ x: 0.4, y: 0.5, w: 0.6, h: 0.5 }))
+    expect(f.w).toBeCloseTo(100)
+    expect(f.h).toBeCloseTo(200)
+    expect(f.x).toBeCloseTo(-40)
+    expect(f.y).toBeCloseTo(-100)
+  })
+
+  it('drawing a cropped image samples the source window, in crop mode the whole picture too', () => {
+    const calls = []
+    const ctx = new Proxy({}, { get: (_, k) => (k === 'globalAlpha' ? 1 : (...a) => { calls.push([k, a]); return k === 'measureText' ? { width: 0 } : undefined }) })
+    const store = new Store()
+    store.put({ id: 'a', typeName: 'asset', src: 'data:,', w: 400, h: 200 })
+    // the asset cache holds a not-yet-loaded Image in jsdom: the placeholder draws, nothing throws
+    drawShape(ctx, img({ x: 0.25, y: 0, w: 0.5, h: 1 }), { theme: THEMES.light, store, zoom: 1, cropPreview: true })
+    expect(calls.some(([k]) => k === 'roundRect')).toBe(true)
   })
 })

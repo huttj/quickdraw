@@ -41,6 +41,7 @@ const ICONS = {
   // menu glyphs
   download: SVG('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>'),
   transparent: SVG('<rect width="18" height="18" x="3" y="3" rx="2"/><rect x="4" y="4" width="8" height="8" fill="currentColor" fill-opacity=".22" stroke="none"/><rect x="12" y="12" width="8" height="8" fill="currentColor" fill-opacity=".22" stroke="none"/>'),
+  vector: SVG('<path d="M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z"/><path d="m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18"/><path d="m2.3 2.3 7.286 7.286"/><circle cx="11" cy="11" r="2"/>'),
   copy: SVG('<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/>'),
   fit: SVG('<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>'),
   trash: SVG('<path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>'),
@@ -49,6 +50,26 @@ const ICONS = {
   chevronLeft: SVG('<path d="m15 18-6-6 6-6"/>'),
   sun: SVG('<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'),
   moon: SVG('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
+  // context menu glyphs
+  cut: SVG('<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>'),
+  paste: SVG('<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>'),
+  selectAll: SVG('<path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/>'),
+  zoomReset: SVG('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/>'),
+  crop: SVG('<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/>'),
+  group: SVG('<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect width="7" height="5" x="7" y="7" rx="1"/><rect width="7" height="5" x="10" y="12" rx="1"/>'),
+  ungroup: SVG('<rect width="8" height="6" x="5" y="4" rx="1"/><rect width="8" height="6" x="11" y="14" rx="1"/>'),
+  bringToFront: SVG('<rect x="8" y="8" width="8" height="8" rx="2"/><path d="M4 10a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2"/><path d="M14 20a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2"/>'),
+  sendToBack: SVG('<rect x="14" y="14" width="8" height="8" rx="2"/><rect x="2" y="2" width="8" height="8" rx="2"/><path d="M7 14v1a2 2 0 0 0 2 2h1"/><path d="M14 7h1a2 2 0 0 1 2 2v1"/>'),
+  bringForward: SVG('<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>'),
+  sendBackward: SVG('<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>'),
+  alignLeft: SVG('<rect width="9" height="6" x="6" y="14" rx="2"/><rect width="16" height="6" x="6" y="4" rx="2"/><path d="M2 2v20"/>'),
+  alignCenter: SVG('<path d="M12 2v20"/><path d="M10 10H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"/><path d="M14 10h6a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-6"/><path d="M10 20H7a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h3"/><path d="M14 20h3a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-3"/>'),
+  alignRight: SVG('<rect width="16" height="6" x="2" y="4" rx="2"/><rect width="9" height="6" x="9" y="14" rx="2"/><path d="M22 22V2"/>'),
+  alignTop: SVG('<rect width="6" height="16" x="4" y="6" rx="2"/><rect width="6" height="9" x="14" y="6" rx="2"/><path d="M22 2H2"/>'),
+  alignMiddle: SVG('<path d="M2 12h20"/><path d="M10 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"/><path d="M10 8V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v4"/><path d="M20 16v1a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1"/><path d="M14 8V7c0-1.1.9-2 2-2h2a2 2 0 0 1 2 2v1"/>'),
+  alignBottom: SVG('<rect width="6" height="16" x="4" y="2" rx="2"/><rect width="6" height="9" x="14" y="9" rx="2"/><path d="M22 22H2"/>'),
+  distributeH: SVG('<rect width="6" height="10" x="9" y="7" rx="2"/><path d="M4 22V2"/><path d="M20 22V2"/>'),
+  distributeV: SVG('<rect width="10" height="6" x="7" y="9" rx="2"/><path d="M22 20H2"/><path d="M22 4H2"/>'),
 }
 // the action bar wears the same glyphs the menu already uses
 ICONS.duplicate = ICONS.copy
@@ -92,6 +113,8 @@ const TIPS = {
 
 // dock buttons in visual order (styles/more/menu ride at the end, always)
 const DOCK_NAMES = ['select', 'hand', 'draw', 'highlight', 'eraser', 'laser', 'line', 'arrow', 'geo', 'text', 'note', 'image']
+// the tools you can pull off the dock and drop on the board as a shape
+const DROP_KINDS = new Set(['line', 'arrow', 'geo', 'text', 'note', ...GEO_IDS])
 // what gives way first as the frame narrows (select and draw never yield)
 const DROP_ORDER = ['hand', 'laser', 'line', 'note', 'image', 'highlight', 'text', 'arrow', 'eraser', 'geo']
 
@@ -104,8 +127,13 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
   root.appendChild(ui)
 
   let popover = null // { name, el }
+  // the context menu's Esc listener lives on the document while it's open
+  let ctxKey = null
+  const closeContextKey = () => {
+    if (ctxKey) { document.removeEventListener('keydown', ctxKey, true); ctxKey = null }
+  }
   const closePopover = () => {
-    if (popover) { popover.el.remove(); popover = null; refresh() }
+    if (popover) { popover.el.remove(); popover = null; closeContextKey(); refresh() }
   }
   const openPopover = (name, build, anchor) => {
     if (popover?.name === name) return closePopover()
@@ -143,12 +171,15 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
         const gb = el('button', 'qd-tool' + (editor.geoKind === g ? ' on' : ''))
         gb.innerHTML = ICONS[g]
         gb.title = g
+        gb.addEventListener('pointerdown', (ev) => ev.stopPropagation())
         gb.addEventListener('click', (ev) => {
           ev.stopPropagation()
+          if (gb.dataset.dragged) { delete gb.dataset.dragged; return }
           editor.setGeoKind(g)
           editor.setTool('geo')
           closePopover()
         })
+        makeDraggable(gb, g) // a kind can be pulled straight onto the board
         p.appendChild(gb)
       }
     }, b)
@@ -160,8 +191,66 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     b.innerHTML = ICONS[name] || ''
     b.title = TIPS[name] || name
     b.addEventListener('pointerdown', (e) => e.stopPropagation())
-    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(e, b) })
+    b.addEventListener('click', (e) => {
+      e.stopPropagation()
+      // the click that closes a drag-and-drop is not a tap on the tool
+      if (b.dataset.dragged) { delete b.dataset.dragged; return }
+      onClick(e, b)
+    })
+    if (DROP_KINDS.has(name)) makeDraggable(b, name)
     return b
+  }
+
+  // ---- drag a tool onto the board -----------------------------------------
+  // Press a shape tool and pull it onto the board: a ghost of its icon rides
+  // the pointer and the shape lands where it's let go. A press that doesn't
+  // travel is still a click.
+  function makeDraggable(b, kind) {
+    b.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || editor.readonly) return
+      delete b.dataset.dragged
+      const start = { x: e.clientX, y: e.clientY, id: e.pointerId }
+      let ghost = null
+      const move = (ev) => {
+        if (ev.pointerId !== start.id) return
+        if (!ghost) {
+          if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 6) return
+          ghost = el('div', 'qd-drag-ghost')
+          ghost.innerHTML = ICONS[kind === 'geo' ? editor.geoKind : kind] || ''
+          ui.appendChild(ghost)
+          b.dataset.dragged = '1'
+          // the button may live in a popover: closing that would detach it
+          // mid-drag and lose the pointer, so it only hides until the drop
+          if (popover) popover.el.style.visibility = 'hidden'
+        }
+        const rr = root.getBoundingClientRect()
+        ghost.style.left = ev.clientX - rr.left + 'px'
+        ghost.style.top = ev.clientY - rr.top + 'px'
+      }
+      const up = (ev) => {
+        if (ev.pointerId !== start.id) return
+        b.removeEventListener('pointermove', move)
+        b.removeEventListener('pointerup', up)
+        b.removeEventListener('pointercancel', up)
+        if (!ghost) return
+        ghost.remove()
+        closePopover()
+        const rr = root.getBoundingClientRect()
+        const sx = ev.clientX - rr.left, sy = ev.clientY - rr.top
+        // let go over the chrome or off the board: a change of mind
+        const under = document.elementFromPoint?.(ev.clientX, ev.clientY)
+        const onBoard = ev.type === 'pointerup' &&
+          sx >= 0 && sy >= 0 && sx <= rr.width && sy <= rr.height && !(under && ui.contains(under))
+        if (onBoard) editor.dropShape(kind, editor.screenToPage(sx, sy))
+        else delete b.dataset.dragged
+      }
+      // capture from the press: the pointer leaves the 32px button long
+      // before the drag threshold is met
+      try { b.setPointerCapture(start.id) } catch {}
+      b.addEventListener('pointermove', move)
+      b.addEventListener('pointerup', up)
+      b.addEventListener('pointercancel', up)
+    })
   }
 
   // ---- dock ----------------------------------------------------------------
@@ -284,26 +373,74 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     }
   }
 
+  // ---- menu pieces ---------------------------------------------------------
+  // one row of a menu: icon, label, optional shortcut; picking it closes the
+  // menu and runs the action
+  const menuItem = (p, icon, label, key, fn, enabled = true) => {
+    const b = el('button', 'qd-menu-item')
+    b.innerHTML = `<span class="qd-mi-ico">${ICONS[icon] || ''}</span><span class="qd-mi-label"></span>`
+    b.querySelector('.qd-mi-label').textContent = label
+    if (key) {
+      const k = el('span', 'qd-mi-key')
+      k.textContent = key
+      b.appendChild(k)
+    }
+    b.disabled = !enabled
+    b.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      closePopover()
+      try { await fn() } catch (err) { console.warn('board menu action failed', err) }
+    })
+    p.appendChild(b)
+    return b
+  }
+  // a standard nested dropdown: the row grows a flyout beside the menu.
+  // A div, not a button: the flyout nests inside, and buttons can't nest.
+  // `build(sub)` fills the flyout; returns { row, sub }.
+  const subRow = (p, { icon, label, value, build }) => {
+    const row = el('div', 'qd-menu-item qd-has-sub')
+    row.setAttribute('role', 'button')
+    row.tabIndex = 0
+    row.innerHTML =
+      `<span class="qd-mi-ico">${icon}</span>` +
+      '<span class="qd-mi-label"></span>' +
+      '<span class="qd-mi-value"></span>' +
+      `<span class="qd-mi-chev">${ICONS.chevronRight}</span>`
+    row.querySelector('.qd-mi-label').textContent = label
+    row.querySelector('.qd-mi-value').textContent = value || ''
+    const sub = el('div', 'qd-submenu')
+    build(sub)
+    row.appendChild(sub)
+    const openSub = () => {
+      row.classList.add('sub-open')
+      // side with room wins: nested menus prefer the right, but the board
+      // menu usually hugs the right edge of the frame
+      const rr = root.getBoundingClientRect()
+      const br = row.getBoundingClientRect()
+      const fitsRight = br.right + sub.offsetWidth + 12 <= rr.right
+      sub.classList.toggle('qd-sub-left', !fitsRight)
+      // grow upward when the row sits low in the frame
+      const fitsDown = br.top - 7 + sub.offsetHeight <= rr.bottom - 8
+      sub.style.top = fitsDown ? '' : 'auto'
+      sub.style.bottom = fitsDown ? '' : '-7px'
+    }
+    const closeSub = () => row.classList.remove('sub-open')
+    let subT
+    row.addEventListener('mouseenter', () => { clearTimeout(subT); openSub() })
+    row.addEventListener('mouseleave', () => { subT = setTimeout(closeSub, 180) })
+    // tap toggles, for pointers that don't hover
+    row.addEventListener('click', (e) => {
+      e.stopPropagation()
+      row.classList.contains('sub-open') ? closeSub() : openSub()
+    })
+    p.appendChild(row)
+    return { row, sub }
+  }
+
   // ---- menu ----------------------------------------------------------------
   function buildMenu(p) {
     p.classList.add('qd-menu-pop')
-    const item = (icon, label, key, fn) => {
-      const b = el('button', 'qd-menu-item')
-      b.innerHTML = `<span class="qd-mi-ico">${ICONS[icon] || ''}</span><span class="qd-mi-label"></span>`
-      b.querySelector('.qd-mi-label').textContent = label
-      if (key) {
-        const k = el('span', 'qd-mi-key')
-        k.textContent = key
-        b.appendChild(k)
-      }
-      b.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        closePopover()
-        try { await fn() } catch (err) { console.warn('board menu action failed', err) }
-      })
-      p.appendChild(b)
-      return b
-    }
+    const item = (icon, label, key, fn) => menuItem(p, icon, label, key, fn)
     // a labelled row of mutually exclusive icon buttons
     const segment = (label, ids, { icons, tips, current, onPick }) => {
       const row = el('div', 'qd-menu-row')
@@ -331,11 +468,10 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     const hasSel = editor.selection.size > 0
     item('download', 'Export as PNG', null, () => saveImage(true, null))
     item('transparent', 'Export — transparent', null, () => saveImage(false, null))
+    item('vector', 'Export as SVG', null, () => saveImage(true, null, 'svg'))
     if (hasSel) item('image', 'Export selection', null, () => saveImage(true, new Set(editor.selection)))
-    item('copy', hasSel ? 'Copy selection as image' : 'Copy as image', null, async () => {
-      const blob = await editor.exportImage({ background: true, ids: hasSel ? new Set(editor.selection) : null })
-      if (blob) await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
-    })
+    if (hasSel) item('vector', 'Export selection as SVG', null, () => saveImage(true, new Set(editor.selection), 'svg'))
+    item('copy', hasSel ? 'Copy selection as image' : 'Copy as image', null, () => copyImage(hasSel ? new Set(editor.selection) : null))
     p.appendChild(el('i', 'qd-menu-div'))
     if (hasSel) item('trash', 'Delete selection', '⌫', () => editor.deleteSelection())
     item('fit', 'Zoom to fit', '⇧1', () => editor.fitContent({ animate: 220 }))
@@ -343,62 +479,30 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
 
     if (opts.gridControl || opts.themeToggle) p.appendChild(el('i', 'qd-menu-div'))
     if (opts.gridControl) {
-      // a standard nested dropdown: the row grows a flyout beside the menu —
-      // six buttons inline read as clutter
-      // a div, not a button: the flyout nests inside, and buttons can't nest
-      const row = el('div', 'qd-menu-item qd-has-sub')
-      row.setAttribute('role', 'button')
-      row.tabIndex = 0
-      row.innerHTML =
-        `<span class="qd-mi-ico">${GRID_ICONS[editor.grid]}</span>` +
-        '<span class="qd-mi-label">Grid</span>' +
-        '<span class="qd-mi-value"></span>' +
-        `<span class="qd-mi-chev">${ICONS.chevronRight}</span>`
-      row.querySelector('.qd-mi-value').textContent = GRID_LABELS[editor.grid]
-
-      const sub = el('div', 'qd-submenu')
-      for (const id of GRID_IDS) {
-        const b = el('button', 'qd-menu-item')
-        b.innerHTML =
-          `<span class="qd-mi-ico">${GRID_ICONS[id]}</span>` +
-          '<span class="qd-mi-label"></span>' +
-          `<span class="qd-mi-check">${editor.grid === id ? ICONS.check : ''}</span>`
-        b.querySelector('.qd-mi-label').textContent = GRID_LABELS[id]
-        b.title = GRID_TIPS[id]
-        b.addEventListener('click', (e) => {
-          e.stopPropagation()
-          editor.setGrid(id)
-          sub.querySelectorAll('.qd-mi-check').forEach((c, i) => { c.innerHTML = GRID_IDS[i] === id ? ICONS.check : '' })
-          row.querySelector('.qd-mi-ico').innerHTML = GRID_ICONS[id]
-          row.querySelector('.qd-mi-value').textContent = GRID_LABELS[id]
-        })
-        sub.appendChild(b)
-      }
-      row.appendChild(sub)
-
-      const openSub = () => {
-        row.classList.add('sub-open')
-        // side with room wins: nested menus prefer the right, but the board
-        // menu usually hugs the right edge of the frame
-        const rr = root.getBoundingClientRect()
-        const br = row.getBoundingClientRect()
-        const fitsRight = br.right + sub.offsetWidth + 12 <= rr.right
-        sub.classList.toggle('qd-sub-left', !fitsRight)
-        // grow upward when the row sits low in the frame
-        const fitsDown = br.top - 7 + sub.offsetHeight <= rr.bottom - 8
-        sub.style.top = fitsDown ? '' : 'auto'
-        sub.style.bottom = fitsDown ? '' : '-7px'
-      }
-      const closeSub = () => row.classList.remove('sub-open')
-      let subT
-      row.addEventListener('mouseenter', () => { clearTimeout(subT); openSub() })
-      row.addEventListener('mouseleave', () => { subT = setTimeout(closeSub, 180) })
-      // tap toggles, for pointers that don't hover
-      row.addEventListener('click', (e) => {
-        e.stopPropagation()
-        row.classList.contains('sub-open') ? closeSub() : openSub()
+      // six buttons inline read as clutter — the backdrops live in a flyout
+      subRow(p, {
+        icon: GRID_ICONS[editor.grid], label: 'Grid', value: GRID_LABELS[editor.grid],
+        build: (sub) => {
+          for (const id of GRID_IDS) {
+            const b = el('button', 'qd-menu-item')
+            b.innerHTML =
+              `<span class="qd-mi-ico">${GRID_ICONS[id]}</span>` +
+              '<span class="qd-mi-label"></span>' +
+              `<span class="qd-mi-check">${editor.grid === id ? ICONS.check : ''}</span>`
+            b.querySelector('.qd-mi-label').textContent = GRID_LABELS[id]
+            b.title = GRID_TIPS[id]
+            b.addEventListener('click', (e) => {
+              e.stopPropagation()
+              editor.setGrid(id)
+              sub.querySelectorAll('.qd-mi-check').forEach((c, i) => { c.innerHTML = GRID_IDS[i] === id ? ICONS.check : '' })
+              const row = sub.parentElement
+              row.querySelector('.qd-mi-ico').innerHTML = GRID_ICONS[id]
+              row.querySelector('.qd-mi-value').textContent = GRID_LABELS[id]
+            })
+            sub.appendChild(b)
+          }
+        },
       })
-      p.appendChild(row)
     }
     if (opts.themeToggle) {
       segment('Theme', ['light', 'dark'], {
@@ -409,13 +513,122 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
       })
     }
   }
-  async function saveImage(background, ids) {
-    const blob = await editor.exportImage({ background, ids })
+  // ---- context menu --------------------------------------------------------
+  // Right-click (or a long press) on the board: a menu at the pointer with
+  // what belongs there — edit, arrange, align and group for a selection, the
+  // board's own actions over empty paper. The editor has already settled the
+  // selection under the pointer by the time this fires.
+  const ALIGN_ITEMS = [
+    ['alignLeft', 'Align left', '⌥A', 'left'], ['alignCenter', 'Align center', '⌥H', 'center'],
+    ['alignRight', 'Align right', '⌥D', 'right'], ['alignTop', 'Align top', '⌥W', 'top'],
+    ['alignMiddle', 'Align middle', '⌥V', 'middle'], ['alignBottom', 'Align bottom', '⌥S', 'bottom'],
+  ]
+  function buildContextMenu(p) {
+    p.classList.add('qd-menu-pop', 'qd-ctx')
+    const item = (icon, label, key, fn, on = true) => menuItem(p, icon, label, key, fn, on)
+    const divider = () => p.appendChild(el('i', 'qd-menu-div'))
+    const sel = editor.selection
+    const one = sel.size === 1 ? editor.store.get([...sel][0]) : null
+    if (editor.cropping) {
+      const img = editor.store.get(editor.cropping.id)
+      item('check', 'Done cropping', 'Enter', () => editor.endCrop())
+      item('crop', 'Reset crop', null, () => editor.resetCrop(img.id), !!img?.props.crop)
+      return
+    }
+    if (!sel.size) {
+      item('paste', 'Paste', '⌘V', () => editor.pasteFromClipboard())
+      item('selectAll', 'Select all', '⌘A', () => editor.selectAll(), editor.store.shapes().length > 0)
+      divider()
+      item('fit', 'Zoom to fit', '⇧1', () => editor.fitContent({ animate: 220 }))
+      item('zoomReset', 'Reset zoom', '⇧0', () => editor.resetZoom({ animate: 180 }))
+      divider()
+      item('download', 'Export as PNG', null, () => saveImage(true, null))
+      item('vector', 'Export as SVG', null, () => saveImage(true, null, 'svg'))
+      item('copy', 'Copy as image', null, () => copyImage(null))
+      divider()
+      item('trash', 'Clear board', '⇧⌘⌫', () => editor.clearBoard(), editor.store.shapes().length > 0)
+      return
+    }
+    if (one && ['text', 'note', 'geo'].includes(one.type)) {
+      item('text', 'Edit text', 'Enter', () => editor.editShapeText(one.id))
+      divider()
+    }
+    if (one?.type === 'image') {
+      item('crop', 'Crop image', 'Enter', () => editor.startCrop(one.id))
+      if (one.props.crop) item('crop', 'Reset crop', null, () => editor.resetCrop(one.id))
+      divider()
+    }
+    item('cut', 'Cut', '⌘X', () => editor.copySelection().then(() => editor.deleteSelection()))
+    item('copy', 'Copy', '⌘C', () => editor.copySelection())
+    item('paste', 'Paste', '⌘V', () => editor.pasteFromClipboard())
+    item('duplicate', 'Duplicate', '⌘D', () => editor.duplicateSelection())
+    item('trash', 'Delete', '⌫', () => editor.deleteSelection())
+    divider()
+    item('group', 'Group', '⌘G', () => editor.groupSelection(), editor.canGroup())
+    item('ungroup', 'Ungroup', '⇧⌘G', () => editor.ungroupSelection(), editor.canUngroup())
+    divider()
+    subRow(p, {
+      icon: ICONS.bringToFront, label: 'Reorder',
+      build: (sub) => {
+        menuItem(sub, 'bringToFront', 'Bring to front', '⇧]', () => editor.bringToFront())
+        menuItem(sub, 'bringForward', 'Bring forward', ']', () => editor.bringForward())
+        menuItem(sub, 'sendBackward', 'Send backward', '[', () => editor.sendBackward())
+        menuItem(sub, 'sendToBack', 'Send to back', '⇧[', () => editor.sendToBack())
+      },
+    })
+    const units = editor._selectionUnits().length
+    const { row: alignRowEl } = subRow(p, {
+      icon: ICONS.alignLeft, label: 'Align',
+      build: (sub) => {
+        for (const [icon, label, key, mode] of ALIGN_ITEMS) menuItem(sub, icon, label, key, () => editor.alignSelection(mode))
+        sub.appendChild(el('i', 'qd-menu-div'))
+        menuItem(sub, 'distributeH', 'Distribute horizontally', '⇧⌥H', () => editor.distributeSelection('horizontal'), units >= 3)
+        menuItem(sub, 'distributeV', 'Distribute vertically', '⇧⌥V', () => editor.distributeSelection('vertical'), units >= 3)
+      },
+    })
+    // one shape (or one group) has nothing to line up with
+    alignRowEl.classList.toggle('qd-off', units < 2)
+    divider()
+    item('image', 'Export selection', null, () => saveImage(true, new Set(sel)))
+    item('vector', 'Export selection as SVG', null, () => saveImage(true, new Set(sel), 'svg'))
+    item('copy', 'Copy as image', null, () => copyImage(new Set(sel)))
+  }
+  function openContextMenu(x, y) {
+    closePopover()
+    const p = el('div', 'qd-popover')
+    buildContextMenu(p)
+    ui.appendChild(p)
+    popover = { name: 'context', el: p }
+    // the menu hangs off the pointer, flipping to stay inside the frame
+    const rw = root.clientWidth, rh = root.clientHeight
+    const pw = p.offsetWidth, ph = p.offsetHeight
+    let left = x + 2, top = y + 2
+    if (rw && left + pw > rw - 8) left = Math.max(8, x - pw - 2)
+    if (rh && top + ph > rh - 8) top = Math.max(8, rh - ph - 8)
+    p.style.left = left + 'px'
+    p.style.top = top + 'px'
+    // Esc closes it from anywhere; the editor's own Esc is fine with that
+    ctxKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePopover() } }
+    document.addEventListener('keydown', ctxKey, true)
+    refresh()
+  }
+
+  async function copyImage(ids) {
+    const blob = await editor.exportImage({ background: true, ids })
+    if (blob) await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+  }
+  // format: 'png' (a raster of the board) or 'svg' (its vectors)
+  async function saveImage(background, ids, format = 'png') {
+    let blob
+    if (format === 'svg') {
+      const svg = editor.exportSvg({ background, ids })
+      blob = svg ? new Blob([svg], { type: 'image/svg+xml' }) : null
+    } else blob = await editor.exportImage({ background, ids })
     if (!blob) return
-    if (onSave) return onSave(blob, background)
+    if (onSave) return onSave(blob, background, format)
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = 'quickdraw-' + new Date().toISOString().slice(0, 19).replaceAll(':', '.') + '.png'
+    a.download = 'quickdraw-' + new Date().toISOString().slice(0, 19).replaceAll(':', '.') + '.' + format
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 5000)
   }
@@ -430,9 +643,17 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     { label: 'Edit', rows: [
       ['Undo', '⌘Z'], ['Redo', '⇧⌘Z'], ['Select all', '⌘A'],
       ['Copy', '⌘C'], ['Cut', '⌘X'], ['Paste', '⌘V'], ['Duplicate', '⌘D'],
+      ['Group', '⌘G'], ['Ungroup', '⇧⌘G'], ['Crop image', 'Enter'],
     ]},
     { label: 'Arrange', rows: [
-      ['Bring to front', ']'], ['Send to back', '['], ['Nudge', 'Arrows (Shift = 8px)'],
+      ['Bring forward / send backward', '] / ['], ['Bring to front / send to back', '⇧] / ⇧['],
+      ['Align left / right', '⌥A / ⌥D'], ['Align top / bottom', '⌥W / ⌥S'],
+      ['Align center / middle', '⌥H / ⌥V'], ['Distribute', '⇧⌥H / ⇧⌥V'],
+      ['Nudge', 'Arrows (Shift = 8px)'], ['Context menu', 'Right-click / long press'],
+    ]},
+    { label: 'Dragging', rows: [
+      ['Copy instead of move', '⌥ drag'], ['Proportional resize', '⇧ drag'],
+      ['Resize about the centre', '⌥ / Ctrl drag'], ['Bind arrow to exact point', '⌥ drag'],
     ]},
     { label: 'View', rows: [
       ['Zoom to fit', '⇧1'], ['Reset zoom', '⇧0'], ['Zoom in / out', '⌘+ / ⌘−'],
@@ -527,7 +748,7 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     toolsBtn.style.display = m === 'mini' ? '' : 'none'
     moreBtn.style.display = m === 'compact' ? '' : 'none'
     dock.classList.toggle('qd-compact', m !== 'full')
-    if (popover && ['more', 'tools', 'geo'].includes(popover.name)) closePopover()
+    if (popover && ['more', 'tools', 'geo', 'context'].includes(popover.name)) closePopover()
     refresh()
   }
   const ro = new ResizeObserver(fit)
@@ -563,6 +784,7 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
     editor.on('selection', refresh),
     editor.on('theme', refresh),
     editor.on('grid', refresh),
+    editor.on('contextmenu', ({ x, y }) => openContextMenu(x, y)),
   ]
 
   // popovers close when the pointer goes to the canvas
@@ -586,6 +808,7 @@ export function buildUI(editor, { hidden = false, onSave, themeToggle = true, gr
       ro.disconnect()
       root.removeEventListener('pointerdown', closeOnCanvas, { capture: true })
       closeHelp()
+      closePopover()
       ui.remove()
     },
   }

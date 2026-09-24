@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Editor, TOOLS } from '../src/editor.js'
 import { createQuickdraw } from '../src/index.js'
+import { pageBounds } from '../src/shapes.js'
 
 // Fake pointer events fed straight to the editor's handlers. The container
 // sits at (0,0) in jsdom, so clientX/Y are screen coords directly.
@@ -46,9 +47,9 @@ afterEach(() => {
 })
 
 describe('setup', () => {
-  it('mounts canvases and starts on draw', () => {
+  it('mounts canvases and starts on the pointer', () => {
     expect(container.querySelectorAll('canvas').length).toBe(2)
-    expect(editor.tool).toBe('draw')
+    expect(editor.tool).toBe('select')
     expect(TOOLS).toContain('draw')
   })
 
@@ -222,6 +223,25 @@ describe('selection & transforms', () => {
     expect(editor.store.get(a.id).z).toBeGreaterThan(editor.store.get(b.id).z)
     editor.sendToBack()
     expect(editor.store.get(a.id).z).toBeLessThan(editor.store.get(b.id).z)
+  })
+
+  it('the rotate knob turns with a rotated shape instead of hovering over its bounding box', () => {
+    const a = makeRect(100, 100, 100, 60) // centre 150,130
+    editor.setSelection([a.id])
+    // unrotated: 22px above the middle of the top edge
+    expect(editor._hitHandle(150, 78)?.kind).toBe('rotate')
+    editor.store.update(a.id, { rot: Math.PI / 2 }) // a quarter turn clockwise
+    // the top edge's middle now sits at the right of the centre (180,130) and
+    // "up" points to the right: the knob is at (202,130)
+    expect(editor._hitHandle(202, 130)?.kind).toBe('rotate')
+    // and nowhere near the old spot above the axis-aligned box (the rotated
+    // frame's own left handle now sits at (150,80), but it isn't the knob)
+    expect(editor._hitHandle(150, 58)).toBe(null)
+    expect(editor._hitHandle(150, 78)?.kind).not.toBe('rotate')
+    // dragging it rotates about the centre
+    const before = editor.store.get(a.id).rot
+    drag(editor, [[202, 130], [150, 182]])
+    expect(editor.store.get(a.id).rot).toBeCloseTo(before + Math.PI / 2)
   })
 
   it('eraser removes everything it swept over in one undo step', () => {
@@ -687,5 +707,814 @@ describe('keyboard help overlay', () => {
     expect(c2.querySelector('.qd-help-backdrop')).toBe(null)
     board.destroy()
     c2.remove()
+  })
+})
+
+// ---- tldraw-style arrange / group / crop / drop / context menu --------------
+
+const rectAt = (ed, x, y, w = 60, h = 40) => {
+  ed.setTool('geo')
+  drag(ed, [[x, y], [x + w, y + h]])
+  const all = ed.store.shapes()
+  return all[all.length - 1]
+}
+const press = (ed, key, over = {}) =>
+  ed._keyDown({ key, code: over.code || '', shiftKey: false, altKey: false, metaKey: false, ctrlKey: false, preventDefault() {}, ...over })
+
+describe('groups', () => {
+  it('⌘G groups the selection: clicking one member selects them all', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 200, 10)
+    const c = rectAt(editor, 400, 10)
+    editor.setSelection([a.id, b.id])
+    expect(editor.canGroup()).toBe(true)
+    press(editor, 'g', { metaKey: true })
+    const gid = editor.store.get(a.id).groupId
+    expect(gid).toBeTruthy()
+    expect(editor.store.get(b.id).groupId).toBe(gid)
+    expect(editor.store.get(c.id).groupId).toBeUndefined()
+    expect(editor.canGroup()).toBe(false) // already exactly this group
+    expect(editor.canUngroup()).toBe(true)
+    // one undo step
+    expect(editor.store.undos[editor.store.undos.length - 1].updated[a.id]).toBeTruthy()
+
+    editor.setSelection([])
+    drag(editor, [[10, 10]]) // click a's corner
+    expect(new Set(editor.selection)).toEqual(new Set([a.id, b.id]))
+    // marquee across a alone still brings b along
+    drag(editor, [[0, 0], [90, 60]])
+    expect(new Set(editor.selection)).toEqual(new Set([a.id, b.id]))
+    // shift-click c adds it; shift-click a's top edge (clear of the selection
+    // box's corner handle) removes the whole group
+    drag(editor, [[400, 10]], { shiftKey: true })
+    expect(editor.selection.size).toBe(3)
+    drag(editor, [[30, 10]], { shiftKey: true })
+    expect([...editor.selection]).toEqual([c.id])
+  })
+
+  it('double-click dives into a group; Esc steps back out; ⇧⌘G dissolves it', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 200, 10)
+    editor.setSelection([a.id, b.id])
+    editor.groupSelection()
+    const gid = editor.store.get(a.id).groupId
+    editor._dblClick({ clientX: 10, clientY: 10 })
+    expect(editor.focusedGroup).toBe(gid)
+    expect([...editor.selection]).toEqual([a.id])
+    // inside the group, members pick one at a time
+    drag(editor, [[200, 10]])
+    expect([...editor.selection]).toEqual([b.id])
+    press(editor, 'Escape')
+    expect(editor.focusedGroup).toBe(null)
+    expect(editor.selection.size).toBe(2)
+    press(editor, 'g', { metaKey: true, shiftKey: true })
+    expect(editor.store.get(a.id).groupId).toBeUndefined()
+    expect('groupId' in editor.store.get(b.id)).toBe(false)
+    expect(editor.canUngroup()).toBe(false)
+  })
+
+  it('duplicating a group makes a new group; grouping groups merges them', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 200, 10)
+    editor.setSelection([a.id, b.id])
+    editor.groupSelection()
+    const gid = editor.store.get(a.id).groupId
+    editor.duplicateSelection()
+    const copies = [...editor.selection].map((id) => editor.store.get(id))
+    expect(copies.length).toBe(2)
+    expect(copies[0].groupId).toBe(copies[1].groupId)
+    expect(copies[0].groupId).not.toBe(gid)
+    // select one shape of each group and group again: four members, one id
+    editor.setSelection([a.id, copies[0].id])
+    editor.groupSelection()
+    expect(editor.selection.size).toBe(4)
+    const ids = new Set(editor.store.shapes().map((s) => s.groupId))
+    expect(ids.size).toBe(1)
+  })
+
+  it('a group moves, deletes and restyles as one', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 200, 10)
+    editor.setSelection([a.id, b.id])
+    editor.groupSelection()
+    editor.setSelection([])
+    // press a's top edge and drag: b comes along
+    drag(editor, [[30, 14], [70, 64]])
+    expect(editor.store.get(b.id).x).toBeCloseTo(b.x + 40)
+    expect(editor.store.get(b.id).y).toBeCloseTo(b.y + 50)
+    editor.setStyle('color', 'red')
+    expect(editor.store.get(b.id).props.color).toBe('red')
+    editor.deleteSelection()
+    expect(editor.store.shapes().length).toBe(0)
+  })
+})
+
+describe('z order', () => {
+  it('bringForward / sendBackward step past one neighbour, keeping the block order', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 20, 20)
+    const c = rectAt(editor, 30, 30)
+    const d = rectAt(editor, 40, 40)
+    const order = () => editor.shapesSorted().map((s) => s.id)
+    expect(order()).toEqual([a.id, b.id, c.id, d.id])
+    editor.setSelection([a.id])
+    press(editor, ']')
+    expect(order()).toEqual([b.id, a.id, c.id, d.id])
+    // only the moved shape changed
+    const last = editor.store.undos[editor.store.undos.length - 1]
+    expect(Object.keys(last.updated)).toEqual([a.id])
+    press(editor, ']')
+    expect(order()).toEqual([b.id, c.id, a.id, d.id])
+    press(editor, '[')
+    expect(order()).toEqual([b.id, a.id, c.id, d.id])
+    // a block of two hops together
+    editor.setSelection([a.id, c.id])
+    editor.bringForward()
+    expect(order()).toEqual([b.id, d.id, a.id, c.id])
+    editor.bringForward() // already on top: nothing to do
+    expect(order()).toEqual([b.id, d.id, a.id, c.id])
+    editor.sendBackward()
+    expect(order()).toEqual([b.id, a.id, c.id, d.id])
+    // shifted brackets go all the way
+    press(editor, '}')
+    expect(order()).toEqual([b.id, d.id, a.id, c.id])
+    press(editor, '[', { shiftKey: true })
+    expect(order()).toEqual([a.id, c.id, b.id, d.id])
+  })
+
+  it('highlights only ever trade places with highlights', () => {
+    const a = rectAt(editor, 10, 10)
+    editor.setTool('highlight')
+    drag(editor, [[10, 20], [60, 70]])
+    const h = editor.store.shapes().find((s) => s.type === 'highlight')
+    editor.setSelection([h.id])
+    editor.bringToFront()
+    // z may or may not move, but the ink stays on top
+    expect(editor.shapesSorted().map((s) => s.id)).toEqual([h.id, a.id])
+  })
+
+  it('a gap split too many times is renormalized rather than lost', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 20, 20)
+    const c = rectAt(editor, 30, 30)
+    editor.store.update(a.id, { z: 1 })
+    editor.store.update(b.id, { z: 1 + 1e-9 })
+    editor.store.update(c.id, { z: 1 + 2e-9 })
+    editor.setSelection([a.id])
+    editor.bringForward()
+    const zs = editor.shapesSorted().map((s) => s.z)
+    expect(editor.shapesSorted().map((s) => s.id)).toEqual([b.id, a.id, c.id])
+    expect(zs[1] - zs[0]).toBeGreaterThan(0.1)
+    expect(zs[2] - zs[1]).toBeGreaterThan(0.1)
+  })
+})
+
+describe('align & distribute', () => {
+  it('aligns on page bounds, in one undo step', () => {
+    const a = rectAt(editor, 10, 10, 60, 40)
+    const b = rectAt(editor, 200, 100, 30, 80)
+    const c = rectAt(editor, 400, 50, 100, 20)
+    editor.selectAll()
+    const n = editor.store.undos.length
+    editor.alignSelection('left')
+    expect(editor.store.shapes().map((s) => s.x)).toEqual([10, 10, 10])
+    expect(editor.store.undos.length).toBe(n + 1)
+    editor.alignSelection('right')
+    for (const s of editor.store.shapes()) expect(s.x + s.props.w).toBeCloseTo(110)
+    editor.alignSelection('center')
+    for (const s of editor.store.shapes()) expect(s.x + s.props.w / 2).toBeCloseTo(60)
+    editor.alignSelection('top')
+    expect(editor.store.shapes().map((s) => s.y)).toEqual([10, 10, 10])
+    editor.alignSelection('bottom')
+    for (const s of editor.store.shapes()) expect(s.y + s.props.h).toBeCloseTo(90)
+    editor.alignSelection('middle')
+    for (const s of editor.store.shapes()) expect(s.y + s.props.h / 2).toBeCloseTo(50)
+    // one unit: nothing to line up with
+    editor.setSelection([a.id])
+    const before = editor.store.get(a.id)
+    editor.alignSelection('left')
+    expect(editor.store.get(a.id)).toBe(before)
+    expect(b.id && c.id).toBeTruthy()
+  })
+
+  it('⌥ keys align, a group counts as one unit', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 100, 10)
+    const c = rectAt(editor, 300, 200)
+    editor.setSelection([a.id, b.id])
+    editor.groupSelection()
+    editor.selectAll()
+    press(editor, 'å', { altKey: true, code: 'KeyA' })
+    // the group slides as a block: a lands on the left edge, b keeps its offset
+    expect(editor.store.get(a.id).x).toBe(10)
+    expect(editor.store.get(b.id).x).toBe(100)
+    expect(editor.store.get(c.id).x).toBe(10)
+    press(editor, '∂', { altKey: true, code: 'KeyD' })
+    expect(editor.store.get(c.id).x).toBe(100) // right edge = b's right edge
+    expect(editor.store.get(a.id).x).toBe(10)
+  })
+
+  it('distribute spaces the middles evenly, the outer two staying put', () => {
+    const a = rectAt(editor, 0, 0, 20, 20)
+    const b = rectAt(editor, 30, 0, 20, 20)
+    const c = rectAt(editor, 200, 0, 20, 20)
+    editor.selectAll()
+    editor.distributeSelection('horizontal')
+    expect(editor.store.get(a.id).x).toBe(0)
+    expect(editor.store.get(c.id).x).toBe(200)
+    expect(editor.store.get(b.id).x).toBeCloseTo(100)
+    // vertical, via the key
+    editor.store.update(b.id, { y: 500 })
+    editor.store.update(c.id, { y: 100 })
+    press(editor, 'V', { altKey: true, shiftKey: true, code: 'KeyV' })
+    expect(editor.store.get(a.id).y).toBe(0)
+    expect(editor.store.get(b.id).y).toBe(500)
+    expect(editor.store.get(c.id).y).toBeCloseTo(250)
+  })
+})
+
+describe('image crop', () => {
+  const addImage = (ed, x = 0, y = 0, w = 100, h = 100, rot = 0) => {
+    const assetId = 'asset:t'
+    ed.store.transact(() => {
+      ed.store.put({ id: assetId, typeName: 'asset', src: 'data:image/png;base64,ZmFrZQ==', w: 400, h: 400 })
+      ed.store.put({ id: 'img', typeName: 'shape', type: 'image', x, y, rot, z: 1, props: { w, h, assetId } })
+    })
+    return ed.store.get('img')
+  }
+
+  it('Enter opens crop mode on a selected image; handles trim, a drag inside slides the picture', () => {
+    addImage(editor)
+    editor.setTool('select')
+    editor.setSelection(['img'])
+    press(editor, 'Enter')
+    expect(editor.cropping).toEqual({ id: 'img' })
+    const undos = editor.store.undos.length
+    // right handle in by 40
+    drag(editor, [[100, 50], [60, 50]])
+    let s = editor.store.get('img')
+    expect(s.props.w).toBeCloseTo(60)
+    expect(s.props.crop).toEqual({ x: 0, y: 0, w: 0.6, h: 1 })
+    // left handle in by 20: the box moves with it
+    drag(editor, [[0, 50], [20, 50]])
+    s = editor.store.get('img')
+    expect(s.x).toBeCloseTo(20)
+    expect(s.props.w).toBeCloseTo(40)
+    expect(s.props.crop.x).toBeCloseTo(0.2)
+    expect(s.props.crop.w).toBeCloseTo(0.4)
+    // slide the picture 10 left behind the (unmoved) window
+    drag(editor, [[40, 50], [30, 50]])
+    s = editor.store.get('img')
+    expect(s.x).toBeCloseTo(20)
+    expect(s.props.crop.x).toBeCloseTo(0.3)
+    expect(s.props.crop.w).toBeCloseTo(0.4)
+    // …but never past its edge
+    drag(editor, [[40, 50], [400, 50]])
+    expect(editor.store.get('img').props.crop.x).toBeCloseTo(0)
+    // still cropping, nothing on the undo stack yet: the whole session is one step
+    expect(editor.cropping).toBeTruthy()
+    expect(editor.store.undos.length).toBe(undos)
+    press(editor, 'Escape')
+    expect(editor.cropping).toBe(null)
+    expect(editor.store.undos.length).toBe(undos + 1)
+    editor.store.undo()
+    expect(editor.store.get('img').props.crop).toBeUndefined()
+    expect(editor.store.get('img').props.w).toBe(100)
+  })
+
+  it('a rotated image keeps its window pinned while cropping; resetCrop restores the picture', () => {
+    const rot = Math.PI / 2 // a quarter turn: local +x is page +y
+    addImage(editor, 0, 0, 100, 100, rot)
+    editor.startCrop('img')
+    // the 'r' handle (local 100,50) sits at page (50,100) after the turn;
+    // drag it "in" — down-screen is local -x here — by 40
+    drag(editor, [[50, 100], [50, 60]])
+    const s = editor.store.get('img')
+    expect(s.props.w).toBeCloseTo(60)
+    expect(s.props.crop.w).toBeCloseTo(0.6)
+    // the window's left edge (local x=0) still lands at page y=0, the
+    // picture didn't jump: window centre = rotated centre of local (30, 50)
+    const cx = s.x + s.props.w / 2, cy = s.y + s.props.h / 2
+    expect(cx).toBeCloseTo(50) // rotWith(30,50 about 50,50 by 90°) = (50, 30)
+    expect(cy).toBeCloseTo(30)
+    editor.endCrop()
+    editor.resetCrop('img')
+    const r = editor.store.get('img')
+    expect(r.props.crop).toBeUndefined()
+    expect(r.props.w).toBeCloseTo(100)
+    expect(r.x + r.props.w / 2).toBeCloseTo(50)
+    expect(r.y + r.props.h / 2).toBeCloseTo(50)
+  })
+
+  it('double-click toggles crop mode; a press off the picture ends it; a tool switch too', () => {
+    addImage(editor, 100, 100)
+    editor.setTool('select')
+    editor._dblClick({ clientX: 150, clientY: 150 })
+    expect(editor.cropping?.id).toBe('img')
+    drag(editor, [[400, 400]])
+    expect(editor.cropping).toBe(null)
+    editor.startCrop('img')
+    editor.setTool('draw')
+    expect(editor.cropping).toBe(null)
+    // the crop event brackets the mode
+    const got = []
+    editor.on('crop', () => got.push(!!editor.cropping))
+    editor.startCrop('img')
+    editor.endCrop()
+    expect(got).toEqual([true, false])
+  })
+})
+
+describe('drop from the toolbar', () => {
+  it('dropShape lands a ready-made shape centred on the point, selected, in the current styles', () => {
+    editor.setStyle('color', 'green')
+    const id = editor.dropShape('geo', { x: 200, y: 200 })
+    const s = editor.store.get(id)
+    expect(s.type).toBe('geo')
+    expect(s.props.geo).toBe('rectangle')
+    expect([s.x, s.y, s.props.w, s.props.h]).toEqual([120, 120, 160, 160])
+    expect(s.props.color).toBe('green')
+    expect(editor.tool).toBe('select')
+    expect([...editor.selection]).toEqual([id])
+    const star = editor.store.get(editor.dropShape('star', { x: 0, y: 0 }))
+    expect(star.props.geo).toBe('star')
+    const arrow = editor.store.get(editor.dropShape('arrow', { x: 100, y: 50 }))
+    expect(arrow.type).toBe('arrow')
+    expect(arrow.x).toBe(20)
+    expect(arrow.props.dx).toBe(160)
+    expect(arrow.props.dash).toBe('solid')
+    // text and notes open for typing straight away
+    const t = editor.dropShape('text', { x: 10, y: 10 })
+    expect(editor.store.get(t).type).toBe('text')
+    expect(editor.editing?.id).toBe(t)
+    expect(editor.dropShape('nope', { x: 0, y: 0 })).toBe(null)
+  })
+
+  it('pulling the shape tool off the dock drops it on the board; a plain click still picks the tool', () => {
+    const c2 = document.createElement('div')
+    document.body.appendChild(c2)
+    c2.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 })
+    const board = createQuickdraw({ container: c2 })
+    const btn = c2.querySelector('.qd-dock button[data-name="geo"]')
+    const fire = (type, x, y) => btn.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }))
+    fire('pointerdown', 400, 580)
+    fire('pointermove', 402, 578) // under the threshold: no ghost yet
+    expect(c2.querySelector('.qd-drag-ghost')).toBe(null)
+    fire('pointermove', 300, 300)
+    expect(c2.querySelector('.qd-drag-ghost')).toBeTruthy()
+    fire('pointerup', 300, 300)
+    fire('click', 300, 300)
+    expect(c2.querySelector('.qd-drag-ghost')).toBe(null)
+    const [s] = board.editor.store.shapes()
+    expect(s.type).toBe('geo')
+    expect([s.x, s.y]).toEqual([220, 220])
+    expect(board.editor.tool).toBe('select') // the drag's click didn't arm the tool
+    // a plain click arms it as before
+    fire('pointerdown', 400, 580)
+    fire('pointerup', 400, 580)
+    fire('click', 400, 580)
+    expect(board.editor.tool).toBe('geo')
+    expect(board.editor.store.shapes().length).toBe(1)
+    // a drop back on the chrome is a change of mind
+    fire('pointerdown', 400, 580)
+    fire('pointermove', 300, 300)
+    fire('pointercancel', 300, 300)
+    expect(board.editor.store.shapes().length).toBe(1)
+    board.destroy()
+    c2.remove()
+  })
+})
+
+describe('context menu', () => {
+  it('right-click selects the shape (with its group) under the pointer and emits contextmenu', () => {
+    const a = rectAt(editor, 10, 10)
+    const b = rectAt(editor, 200, 10)
+    editor.setSelection([a.id, b.id])
+    editor.groupSelection()
+    editor.setSelection([])
+    editor.setTool('draw')
+    const got = []
+    editor.on('contextmenu', (e) => got.push(e))
+    let prevented = false
+    editor._contextMenu({ target: editor.canvas, clientX: 10, clientY: 10, preventDefault() { prevented = true } })
+    expect(prevented).toBe(true)
+    expect(got.length).toBe(1)
+    expect(got[0].hit.id).toBe(a.id)
+    expect(got[0].page).toEqual({ x: 10, y: 10 })
+    expect(editor.tool).toBe('select')
+    expect(editor.selection.size).toBe(2)
+    // over empty paper the selection clears
+    editor._contextMenu({ target: editor.canvas, clientX: 500, clientY: 500, preventDefault() {} })
+    expect(got[1].hit).toBe(null)
+    expect(editor.selection.size).toBe(0)
+    // readonly boards keep the browser's menu
+    editor.setReadonly(true)
+    editor._contextMenu({ target: editor.canvas, clientX: 10, clientY: 10, preventDefault() {} })
+    expect(got.length).toBe(2)
+  })
+
+  it('a long press with a finger opens it too', () => {
+    vi.useFakeTimers()
+    try {
+      const a = rectAt(editor, 10, 10)
+      editor.setSelection([])
+      const got = []
+      editor.on('contextmenu', (e) => got.push(e))
+      pid++
+      editor._pointerDown({ ...ev(12, 12, { pointerType: 'touch' }), target: editor.canvas })
+      vi.advanceTimersByTime(300)
+      expect(got.length).toBe(0)
+      vi.advanceTimersByTime(300)
+      expect(got.length).toBe(1)
+      expect(got[0].hit.id).toBe(a.id)
+      expect(editor.session).toBe(null)
+      editor._pointerUp({ ...ev(12, 12, { pointerType: 'touch' }), target: editor.canvas })
+      // a finger that travels is a drag, not a press
+      pid++
+      editor._pointerDown({ ...ev(12, 12, { pointerType: 'touch' }), target: editor.canvas })
+      editor._pointerMove({ ...ev(60, 60, { pointerType: 'touch' }), target: editor.canvas })
+      vi.advanceTimersByTime(700)
+      expect(got.length).toBe(1)
+      editor._pointerUp({ ...ev(60, 60, { pointerType: 'touch' }), target: editor.canvas })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('the stock UI shows a menu at the pointer that acts on the selection', () => {
+    const c2 = document.createElement('div')
+    document.body.appendChild(c2)
+    const board = createQuickdraw({ container: c2 })
+    const ed = board.editor
+    const menu = () => c2.querySelector('.qd-popover.qd-ctx')
+    const items = () => [...menu().querySelectorAll('.qd-menu-item')]
+    const find = (label) => items().find((b) => b.querySelector('.qd-mi-label')?.textContent === label)
+
+    // empty paper: the board's own actions
+    ed._openContextMenu({ x: 300, y: 300 })
+    expect(menu()).toBeTruthy()
+    expect(find('Select all')).toBeTruthy()
+    expect(find('Select all').disabled).toBe(true) // nothing to select yet
+    expect(find('Group')).toBeUndefined()
+    expect(menu().style.left).toBe('302px')
+    // Esc closes it
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    expect(menu()).toBe(null)
+
+    const a = rectAt(ed, 10, 10)
+    const b = rectAt(ed, 200, 10)
+    ed.setSelection([a.id])
+    ed._openContextMenu({ x: 10, y: 10 })
+    expect(find('Group').disabled).toBe(true) // one shape can't group
+    expect(find('Ungroup').disabled).toBe(true)
+    expect(find('Align').classList.contains('qd-off')).toBe(true)
+    expect(find('Reorder')).toBeTruthy()
+    expect(find('Bring forward')).toBeTruthy() // the flyout is built up front
+    expect(find('Edit text')).toBeTruthy() // a geo carries a label
+
+    ed.setSelection([a.id, b.id])
+    ed._openContextMenu({ x: 10, y: 10 })
+    expect(find('Group').disabled).toBe(false)
+    expect(find('Align').classList.contains('qd-off')).toBe(false)
+    expect(find('Distribute horizontally').disabled).toBe(true) // needs three
+    find('Group').click()
+    expect(menu()).toBe(null)
+    expect(ed.store.get(a.id).groupId).toBeTruthy()
+
+    ed._openContextMenu({ x: 10, y: 10 })
+    find('Delete').click()
+    expect(ed.store.shapes().length).toBe(0)
+    board.destroy()
+    expect(document.querySelector('.qd-ctx')).toBe(null)
+    c2.remove()
+  })
+})
+
+describe('rotated resize', () => {
+  it('a rotated shape shows handles on its own frame and resizes in it, the far edge anchored', () => {
+    const a = rectAt(editor, 100, 100, 100, 60) // centre 150,130
+    editor.store.update(a.id, { rot: Math.PI / 2 })
+    editor.setSelection([a.id])
+    // local right-middle (100,30) → page: rotate about (150,130) by 90° → (150,180)
+    expect(editor._hitHandle(150, 180)).toEqual({ kind: 'resize', which: 'r' })
+    // local top-left (0,0) → (180,80)
+    expect(editor._hitHandle(180, 80)).toEqual({ kind: 'resize', which: 'tl' })
+    // drag the local right edge outwards by 40 (page +y): width grows, height and the left edge stay
+    drag(editor, [[150, 180], [150, 220]])
+    const s = editor.store.get(a.id)
+    expect(s.props.w).toBeCloseTo(140)
+    expect(s.props.h).toBeCloseTo(60)
+    expect(s.rot).toBeCloseTo(Math.PI / 2)
+    // the anchored left edge (local x=0) still maps to page y=80: centre moved by +20 along page y
+    expect(s.x + s.props.w / 2).toBeCloseTo(150)
+    expect(s.y + s.props.h / 2).toBeCloseTo(150)
+    // one undo step
+    editor.store.undo()
+    expect(editor.store.get(a.id).props.w).toBeCloseTo(100)
+  })
+
+  it('a corner keeps the far corner fixed; shift makes it uniform', () => {
+    const a = rectAt(editor, 100, 100, 100, 60)
+    editor.store.update(a.id, { rot: Math.PI })
+    editor.setSelection([a.id])
+    // upside down: local br (100,60) sits at page tl (100,100)
+    expect(editor._hitHandle(100, 100)).toEqual({ kind: 'resize', which: 'br' })
+    drag(editor, [[100, 100], [70, 100]], { shiftKey: true }) // local +30 in x → uniform 1.3
+    const s = editor.store.get(a.id)
+    expect(s.props.w).toBeCloseTo(130)
+    expect(s.props.h).toBeCloseTo(78)
+    // local tl (0,0) → page (200,160) stays put: centre = (200 - 65, 160 - 39)
+    expect(s.x + s.props.w / 2).toBeCloseTo(135)
+    expect(s.y + s.props.h / 2).toBeCloseTo(121)
+  })
+})
+
+describe('⌥ copy-drag', () => {
+  it('alt is live: down = copy, up = back to a move; the drop keeps whatever is on', () => {
+    const a = rectAt(editor, 10, 10)
+    editor.setSelection([a.id])
+    const undos = editor.store.undos.length
+    pid++
+    editor._pointerDown({ ...ev(30, 14), target: editor.canvas })
+    editor._pointerMove({ ...ev(50, 34), target: editor.canvas })
+    expect(editor.store.shapes().length).toBe(1)
+    expect(editor.store.get(a.id).x).toBeCloseTo(30)
+    // alt lands: the original goes home, a copy carries on under the pointer
+    editor._pointerMove({ ...ev(70, 54, { altKey: true }), target: editor.canvas })
+    expect(editor.store.shapes().length).toBe(2)
+    expect(editor.store.get(a.id).x).toBeCloseTo(10)
+    let copy = editor.store.shapes().find((s) => s.id !== a.id)
+    expect(copy.x).toBeCloseTo(50)
+    expect([...editor.selection]).toEqual([copy.id])
+    // alt released before the drop: the copy goes away, the original is back under the pointer
+    editor._pointerMove({ ...ev(90, 74), target: editor.canvas })
+    expect(editor.store.shapes().length).toBe(1)
+    expect(editor.store.get(a.id).x).toBeCloseTo(70)
+    expect([...editor.selection]).toEqual([a.id])
+    // alt again, then the button comes up with it held: the copy is committed
+    editor._pointerMove({ ...ev(110, 94, { altKey: true }), target: editor.canvas })
+    editor._pointerUp({ ...ev(110, 94, { altKey: true }), target: editor.canvas })
+    expect(editor.store.shapes().length).toBe(2)
+    expect(editor.store.get(a.id).x).toBeCloseTo(10)
+    copy = editor.store.shapes().find((s) => s.id !== a.id)
+    expect(copy.x).toBeCloseTo(90)
+    expect(editor.store.undos.length).toBe(undos + 1) // one clean step: the copy at its place
+    editor.store.undo()
+    expect(editor.store.shapes().length).toBe(1)
+    expect(editor.store.get(a.id).x).toBeCloseTo(10)
+  })
+
+  it('the Alt key itself toggles it while dragging; a drop after letting go is a plain move', () => {
+    const a = rectAt(editor, 10, 10)
+    editor.setSelection([a.id])
+    const undos = editor.store.undos.length
+    pid++
+    editor._pointerDown({ ...ev(30, 14), target: editor.canvas })
+    editor._pointerMove({ ...ev(50, 34), target: editor.canvas })
+    press(editor, 'Alt', { altKey: true })
+    expect(editor.store.shapes().length).toBe(2)
+    expect(editor.store.get(a.id).x).toBeCloseTo(10)
+    editor._keyUp({ key: 'Alt' })
+    expect(editor.store.shapes().length).toBe(1)
+    expect(editor.store.get(a.id).x).toBeCloseTo(30)
+    editor._pointerUp({ ...ev(50, 34), target: editor.canvas })
+    expect(editor.store.shapes().length).toBe(1)
+    expect(editor.store.get(a.id).x).toBeCloseTo(30)
+    expect(editor.store.undos.length).toBe(undos + 1)
+    // that step is a pure move: no trace of the copy that came and went
+    const last = editor.store.undos[editor.store.undos.length - 1]
+    expect(Object.keys(last.added).length).toBe(0)
+    expect(Object.keys(last.removed).length).toBe(0)
+  })
+})
+
+describe('arrow bindings', () => {
+  const box = (ed, id, x, y, w = 100, h = 100, over = {}) => {
+    ed.store.put({ id, typeName: 'shape', type: 'geo', x, y, rot: 0, z: ed.store.maxZ() + 1, props: { geo: 'rectangle', w, h, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw' }, ...over })
+    return ed.store.get(id)
+  }
+  const arrowOf = (ed) => ed.store.shapes().find((s) => s.type === 'arrow')
+
+  it('an arrow drawn from inside one box to inside another binds both ends on their outlines', () => {
+    box(editor, 'a', 0, 0)
+    box(editor, 'b', 300, 0)
+    editor.setTool('arrow')
+    drag(editor, [[50, 50], [200, 50], [350, 50]])
+    const ar = arrowOf(editor)
+    expect(ar.props.startBind).toEqual({ id: 'a', nx: 0.5, ny: 0.5 })
+    expect(ar.props.endBind).toEqual({ id: 'b', nx: 0.5, ny: 0.5 })
+    // start sits just outside a's right edge (x=100), the head just short of b's left edge (x=300)
+    expect(ar.x).toBeCloseTo(100 + 2, 0)
+    expect(ar.y).toBeCloseTo(50)
+    expect(ar.x + ar.props.dx).toBeCloseTo(300 - 5.8, 0)
+    expect(ar.y + ar.props.dy).toBeCloseTo(50)
+    expect(editor.store.undos.length).toBe(3) // two boxes, one arrow gesture
+  })
+
+  it('the arrow follows its shapes — moves, resizes, rotations — in the same undo step', () => {
+    box(editor, 'a', 0, 0)
+    box(editor, 'b', 300, 0)
+    editor.setTool('arrow')
+    drag(editor, [[50, 50], [350, 50]])
+    const before = arrowOf(editor)
+    const n = editor.store.undos.length
+    // move b down by 200: the head follows to b's new outline, the start swings to aim at it
+    editor.setSelection(['b'])
+    editor.store.transact(() => editor._nudge(['b'], 0, 200))
+    let ar = arrowOf(editor)
+    // the head sits on b's left edge (x=300, less the head gap along the
+    // ray), somewhere along it — where the ray from a's centre to b's enters b
+    expect(ar.x + ar.props.dx).toBeGreaterThan(292)
+    expect(ar.x + ar.props.dx).toBeLessThan(300)
+    expect(ar.y + ar.props.dy).toBeGreaterThan(200)
+    expect(ar.y + ar.props.dy).toBeLessThan(300)
+    expect(editor.store.undos.length).toBe(n + 1)
+    const last = editor.store.undos[n]
+    expect(Object.keys(last.updated).sort()).toEqual(['b', ar.id].sort())
+    editor.store.undo()
+    expect(arrowOf(editor)).toEqual(before)
+    editor.store.redo()
+    expect(arrowOf(editor).x + arrowOf(editor).props.dx).toBeLessThan(300)
+    // a resize of a shifts the start: with a now 200 wide, the ray from b's
+    // centre leaves a through its bottom edge (y=100) instead of its right
+    editor.store.update('a', { props: { w: 200 } })
+    ar = arrowOf(editor)
+    expect(ar.y).toBeGreaterThan(100)
+    expect(ar.y).toBeLessThan(104)
+    expect(ar.x).toBeGreaterThan(100)
+    expect(ar.x).toBeLessThan(200)
+  })
+
+  it('deleting a bound shape frees that end; the arrow stays', () => {
+    box(editor, 'a', 0, 0)
+    box(editor, 'b', 300, 0)
+    editor.setTool('arrow')
+    drag(editor, [[50, 50], [350, 50]])
+    editor.store.remove(['b'])
+    const ar = arrowOf(editor)
+    expect(ar).toBeTruthy()
+    expect(ar.props.endBind).toBeUndefined()
+    expect(ar.props.startBind).toBeTruthy()
+    editor.store.undo()
+    expect(arrowOf(editor).props.endBind).toEqual({ id: 'b', nx: 0.5, ny: 0.5 })
+  })
+
+  it('dragging an end handle onto a shape ties it (⌥ = exact point); onto paper frees it', () => {
+    box(editor, 'a', 0, 0)
+    editor.setTool('arrow')
+    drag(editor, [[300, 300], [400, 300]]) // free arrow, then selected
+    const id = arrowOf(editor).id
+    expect([...editor.selection]).toEqual([id])
+    // drag the end (400,300) into a, near its centre: snaps to the centre
+    drag(editor, [[400, 300], [60, 40]])
+    let ar = editor.store.get(id)
+    expect(ar.props.endBind).toEqual({ id: 'a', nx: 0.5, ny: 0.5 })
+    expect(editor.bindHover).toBe(null) // cleared on release
+    // the end now sits on a's outline, on the side facing the start
+    expect(ar.x + ar.props.dx).toBeGreaterThan(100)
+    expect(ar.x + ar.props.dx).toBeLessThan(110)
+    // ⌥ keeps the exact point
+    const end = { x: ar.x + ar.props.dx, y: ar.y + ar.props.dy }
+    drag(editor, [[end.x, end.y], [90, 10]], { altKey: true })
+    ar = editor.store.get(id)
+    expect(ar.props.endBind.nx).toBeCloseTo(0.9)
+    expect(ar.props.endBind.ny).toBeCloseTo(0.1)
+    // back onto paper: free
+    const e2 = { x: ar.x + ar.props.dx, y: ar.y + ar.props.dy }
+    drag(editor, [[e2.x, e2.y], [500, 500]])
+    ar = editor.store.get(id)
+    expect(ar.props.endBind).toBeUndefined()
+    expect(ar.x + ar.props.dx).toBeCloseTo(500)
+  })
+
+  it('a bound arrow dragged on its own lets go; dragged with its shape it stays tied; copies re-tie', () => {
+    box(editor, 'a', 0, 0)
+    box(editor, 'b', 300, 0)
+    editor.setTool('arrow')
+    drag(editor, [[50, 50], [350, 50]])
+    const id = arrowOf(editor).id
+    // move the arrow alone (press its shaft, clear of the bend handle at the
+    // midpoint): both ties drop, it just moves
+    editor.setSelection([id])
+    drag(editor, [[160, 50], [160, 150]])
+    let ar = editor.store.get(id)
+    expect(ar.props.startBind).toBeUndefined()
+    expect(ar.props.endBind).toBeUndefined()
+    expect(ar.y).toBeCloseTo(150)
+    editor.store.undo()
+    ar = editor.store.get(id)
+    expect(ar.props.startBind).toBeTruthy()
+    // move arrow + b together (press b's left edge): the end stays tied and follows b
+    editor.setSelection([id, 'b'])
+    drag(editor, [[300, 80], [300, 280]])
+    ar = editor.store.get(id)
+    expect(ar.props.endBind.id).toBe('b')
+    expect(ar.props.startBind).toBeUndefined() // a stayed behind, so that tie let go
+    expect(ar.y + ar.props.dy).toBeCloseTo(250, 0)
+    // duplicate arrow + b: the copy ties to the copied b, not the original
+    editor.setSelection([id, 'b'])
+    editor.duplicateSelection()
+    const copies = [...editor.selection].map((i) => editor.store.get(i))
+    const arCopy = copies.find((s) => s.type === 'arrow')
+    const bCopy = copies.find((s) => s.type === 'geo')
+    expect(arCopy.props.endBind.id).toBe(bCopy.id)
+  })
+
+  it('remote diffs skip reactors; local ones run them once per transaction', () => {
+    box(editor, 'a', 0, 0)
+    editor.store.put({ id: 'ar', typeName: 'shape', type: 'line', x: 300, y: 50, rot: 0, z: 5, props: { dx: -150, dy: 0, bend: 0, color: 'black', size: 'm', dash: 'solid', endBind: { id: 'a', nx: 0.5, ny: 0.5 } } })
+    let ar = editor.store.get('ar')
+    expect(ar.x + ar.props.dx).toBeCloseTo(102) // solved on put
+    const diffs = []
+    editor.store.listen((d) => diffs.push(d))
+    editor.store.applyDiff({ added: {}, removed: {}, updated: { a: [editor.store.get('a'), { ...editor.store.get('a'), x: 50 }] } }, 'remote')
+    expect(diffs.length).toBe(1)
+    expect(Object.keys(diffs[0].updated)).toEqual(['a']) // the arrow was not touched locally
+    expect(editor.store.get('ar').x + editor.store.get('ar').props.dx).toBeCloseTo(102)
+  })
+})
+
+describe('resize pinning', () => {
+  const text = (ed, x, y, t = 'hello world') => {
+    ed.store.put({ id: 't', typeName: 'shape', type: 'text', x, y, rot: 0, z: 1, props: { text: t, color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    return ed.store.get('t')
+  }
+  const note = (ed, x, y) => {
+    ed.store.put({ id: 'n', typeName: 'shape', type: 'note', x, y, rot: 0, z: 1, props: { text: 'n', color: 'yellow', size: 'm', font: 'draw', scale: 1 } })
+    return ed.store.get('n')
+  }
+
+  it('a side pull on text sets its wrap width; the far edge and the type size stay put', () => {
+    const t = text(editor, 100, 100)
+    editor.setTool('select')
+    editor.setSelection(['t'])
+    const b0 = pageBounds(t)
+    // no top/bottom handles on text
+    expect(editor._hitHandle(b0.x + b0.w / 2, b0.y)).toBe(null)
+    expect(editor._hitHandle(b0.x + b0.w, b0.y + b0.h / 2)).toEqual({ kind: 'resize', which: 'r' })
+    // pull the right edge in by 40
+    drag(editor, [[b0.x + b0.w, b0.y + b0.h / 2], [b0.x + b0.w - 40, b0.y + b0.h / 2]])
+    const s = editor.store.get('t')
+    expect(s.props.autosize).toBe(false)
+    expect(s.props.scale).toBe(1)
+    expect(s.x).toBe(100) // left edge pinned
+    expect(pageBounds(s).w).toBeCloseTo(b0.w - 40)
+    // and from the left, the right edge is pinned
+    const b1 = pageBounds(s)
+    drag(editor, [[b1.x, b1.y + b1.h / 2], [b1.x + 20, b1.y + b1.h / 2]])
+    const s2 = editor.store.get('t')
+    expect(pageBounds(s2).x + pageBounds(s2).w).toBeCloseTo(b1.x + b1.w)
+    expect(pageBounds(s2).w).toBeCloseTo(b1.w - 20)
+  })
+
+  it('a side pull on a note scales it as a whole with the far edge pinned; a corner keeps the far corner', () => {
+    const n = note(editor, 100, 100)
+    editor.setTool('select')
+    editor.setSelection(['n'])
+    const b0 = pageBounds(n) // 200x200
+    drag(editor, [[b0.x + b0.w, b0.y + b0.h / 2], [b0.x + b0.w + 100, b0.y + b0.h / 2]])
+    let s = editor.store.get('n')
+    expect(s.props.scale).toBeCloseTo(1.5)
+    expect(s.x).toBe(100)
+    expect(s.y).toBe(100) // top pinned too, grows down
+    // bottom-left corner pull: the top-right corner stays
+    const b1 = pageBounds(s)
+    drag(editor, [[b1.x, b1.y + b1.h], [b1.x - 30, b1.y + b1.h + 30]])
+    s = editor.store.get('n')
+    const b2 = pageBounds(s)
+    expect(b2.x + b2.w).toBeCloseTo(b1.x + b1.w)
+    expect(b2.y).toBeCloseTo(b1.y)
+    expect(b2.w).toBeCloseTo(b1.w + 30)
+  })
+
+  it('⌥ resizes about the centre, unrotated and rotated', () => {
+    const a = rectAt(editor, 100, 100, 100, 60) // centre 150,130
+    editor.setSelection([a.id])
+    drag(editor, [[200, 130], [240, 130]], { altKey: true })
+    let s = editor.store.get(a.id)
+    expect(s.props.w).toBeCloseTo(180)
+    expect(s.x + s.props.w / 2).toBeCloseTo(150)
+    expect(s.y).toBeCloseTo(100)
+    editor.store.update(a.id, { rot: Math.PI / 2, props: { w: 100 } })
+    editor.store.update(a.id, { x: 100 })
+    // local right-middle now at page (150,180): pull out by 40 with ctrl
+    drag(editor, [[150, 180], [150, 220]], { ctrlKey: true })
+    s = editor.store.get(a.id)
+    expect(s.props.w).toBeCloseTo(180)
+    expect(s.x + s.props.w / 2).toBeCloseTo(150)
+    expect(s.y + s.props.h / 2).toBeCloseTo(130)
+  })
+
+  it('rotated handles are drawn turned with the box', () => {
+    const a = rectAt(editor, 100, 100, 100, 60)
+    editor.store.update(a.id, { rot: 0.7 })
+    editor.setSelection([a.id])
+    const ctx = editor.overlay.getContext('2d')
+    const calls = []
+    const orig = ctx.rotate
+    ctx.rotate = (r) => calls.push(r)
+    editor.render()
+    ctx.rotate = orig
+    expect(calls.filter((r) => Math.abs(r - 0.7) < 1e-9).length).toBe(8)
   })
 })

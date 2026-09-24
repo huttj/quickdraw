@@ -52,6 +52,7 @@ export class Store {
     this.records = new Map()
     this.listeners = new Set() // { fn, source: 'user' | 'remote' | 'all' }
     this.historyListeners = new Set()
+    this.reactors = new Set() // fn(diff), run inside a user transaction before it commits
     this.undos = []
     this.redos = []
     this._batch = null // open history batch: composed diff
@@ -96,12 +97,34 @@ export class Store {
     }
   }
 
+  // Reactors keep derived records true: they run inside a local transaction,
+  // after its body and before it commits, and may write more records into
+  // it — an arrow tied to a shape that just moved lands in the same diff and
+  // the same undo step. They run until a pass writes nothing. Remote diffs
+  // skip them: the peer's own reactors already did the work.
+  react(fn) {
+    this.reactors.add(fn)
+    return () => this.reactors.delete(fn)
+  }
+  _runReactors() {
+    for (let i = 0; i < 8; i++) {
+      const v = this._tx.v
+      for (const fn of [...this.reactors]) {
+        try { fn(this._tx.diff) } catch (e) { console.warn('board reactor failed', e) }
+      }
+      if (this._tx.v === v) return
+    }
+  }
+
   // Every mutation happens inside a transaction; nested calls share the outer
   // one. One diff is emitted per outermost transact.
   transact(fn, source = 'user') {
     if (this._tx) { fn(); return }
-    this._tx = { diff: emptyDiff(), source }
-    try { fn() } finally {
+    this._tx = { diff: emptyDiff(), source, v: 0 }
+    try {
+      fn()
+      if (source === 'user' && this.reactors.size) this._runReactors()
+    } finally {
       const { diff } = this._tx
       this._tx = null
       if (!isDiffEmpty(diff)) {
@@ -123,6 +146,7 @@ export class Store {
     this.transact(() => {
       const prev = this.records.get(rec.id)
       this.records.set(rec.id, rec)
+      this._tx.v++
       const d = this._tx.diff
       if (prev) {
         if (d.added[rec.id]) d.added[rec.id] = rec
@@ -150,6 +174,7 @@ export class Store {
         const prev = this.records.get(id)
         if (!prev) continue
         this.records.delete(id)
+        this._tx.v++
         const d = this._tx.diff
         if (d.added[id]) delete d.added[id]
         else if (d.updated[id]) { d.removed[id] = d.updated[id][0]; delete d.updated[id] }

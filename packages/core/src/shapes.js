@@ -16,12 +16,12 @@ import {
 import { strokeOutline } from './freehand.js'
 
 export const NOTE_W = 200
-const NOTE_PAD = 20
+export const NOTE_PAD = 20
 const LABEL_PAD = 12
 
 // semi fill: a near-opaque wash of the paper, so the shape occludes what's
 // behind it without committing to a color
-const SEMI = { light: 'rgba(249, 247, 241, 0.85)', dark: 'rgba(32, 30, 25, 0.85)' }
+export const SEMI = { light: 'rgba(249, 247, 241, 0.85)', dark: 'rgba(32, 30, 25, 0.85)' }
 
 // ---- local bounds (origin = shape.x/y, unrotated) --------------------------
 
@@ -175,7 +175,7 @@ export function noteLayout(shape) {
   return l
 }
 
-function geoLabelLayout(shape) {
+export function geoLabelLayout(shape) {
   const p = shape.props
   if (!p.label) return null
   const key = p
@@ -188,6 +188,21 @@ function geoLabelLayout(shape) {
   hit = { lines, fontSize, font, lh, textH: lines.length * lh }
   layoutCache.set(key, hit)
   return hit
+}
+
+// ---- image crop ------------------------------------------------------------
+
+// `crop` is normalized — { x, y, w, h } as fractions of the source picture —
+// and absent means the whole picture. The shape's box (w×h) shows exactly
+// that window, so the full source, laid in the shape's local frame, is the
+// box scaled up by 1/crop and pushed back by the crop offset.
+export function imageFrame(shape) {
+  const p = shape.props
+  const c = p.crop
+  if (!c) return { x: 0, y: 0, w: p.w, h: p.h }
+  const fw = p.w / (c.w || 1)
+  const fh = p.h / (c.h || 1)
+  return { x: -c.x * fw, y: -c.y * fh, w: fw, h: fh }
 }
 
 // ---- image assets ----------------------------------------------------------
@@ -208,7 +223,7 @@ export function assetImage(store, assetId, onReady) {
 
 // ---- rendering -------------------------------------------------------------
 
-const dashFor = (dash, w) =>
+export const dashFor = (dash, w) =>
   dash === 'dashed' ? [w * 3.2, w * 2.6] : dash === 'dotted' ? [0.01, w * 2.5] : null
 
 function strokeStyled(ctx, dash, w) {
@@ -225,6 +240,14 @@ function geoPath(shape) {
   let path = geoPathCache.get(p)
   if (path) return path
   path = new Path2D()
+  buildGeoPath(path, shape)
+  geoPathCache.set(p, path)
+  return path
+}
+// The geo outline into any path sink (a Path2D, or the SVG export's string
+// builder) — one geometry for the canvas and the file.
+export function buildGeoPath(path, shape) {
+  const p = shape.props
   if (p.geo === 'ellipse') {
     if (p.dash === 'draw') {
       const pts = wobblePolyline(ellipsePolygon(p.w, p.h, 40), shape.id, { step: 18, amp: Math.min(2, p.w / 40 + 0.6) })
@@ -263,8 +286,6 @@ function geoPath(shape) {
       path.closePath()
     }
   }
-  geoPathCache.set(p, path)
-  return path
 }
 
 const patternCache = new Map() // `${color}|${theme}` -> CanvasPattern
@@ -318,16 +339,21 @@ function drawPath(shape) {
     if (hit) return hit
   }
   const path = new Path2D()
+  buildInkPath(path, shape)
+  if (p.done) outlineCache.set(p, path)
+  return path
+}
+// the pencil's filled outline into any path sink (see buildGeoPath)
+export function buildInkPath(path, shape) {
+  const p = shape.props
   const outline = strokeOutline(p.pts, { size: INK_SIZES[p.size], simulate: !p.isPen })
   traceSmooth(path, outline, true)
   path.closePath()
-  if (p.done) outlineCache.set(p, path)
-  return path
 }
 
 // Draw one shape. ctx is already in PAGE space (camera applied by caller);
 // this applies the shape's own translate/rotate.
-// opts: { theme, store, zoom, onAssetLoad, ghost }
+// opts: { theme, store, zoom, onAssetLoad, ghost, hideText, cropPreview }
 export function drawShape(ctx, shape, opts) {
   const { theme } = opts
   const p = shape.props
@@ -468,11 +494,23 @@ export function drawShape(ctx, shape, opts) {
     case 'image': {
       const img = assetImage(opts.store, p.assetId, opts.onAssetLoad)
       if (img) {
+        if (opts.cropPreview) {
+          // crop mode: the whole picture shows through faintly around the window
+          const f = imageFrame(shape)
+          ctx.save()
+          ctx.globalAlpha *= 0.35
+          ctx.drawImage(img, f.x, f.y, f.w, f.h)
+          ctx.restore()
+        }
         ctx.beginPath()
         ctx.roundRect(0, 0, p.w, p.h, 4)
         ctx.save()
         ctx.clip()
-        ctx.drawImage(img, 0, 0, p.w, p.h)
+        const c = p.crop
+        if (c) {
+          const sw = img.naturalWidth || img.width, sh = img.naturalHeight || img.height
+          ctx.drawImage(img, c.x * sw, c.y * sh, c.w * sw, c.h * sh, 0, 0, p.w, p.h)
+        } else ctx.drawImage(img, 0, 0, p.w, p.h)
         ctx.restore()
       } else {
         ctx.fillStyle = SEMI[theme.id]
@@ -603,9 +641,14 @@ export function scaleShape(shape, sx, sy) {
     case 'image':
       return { ...shape, props: { ...p, w: Math.max(1, p.w * sx), h: Math.max(1, p.h * sy) } }
     case 'text': {
-      // uniform corner scale grows the type itself
-      const s = Math.sqrt(Math.abs(sx * sy))
-      return { ...shape, props: { ...p, scale: Math.max(0.2, (p.scale || 1) * s), ...(p.autosize === false && p.w ? { w: p.w * sx } : {}) } }
+      if (Math.abs(sx - sy) > 1e-9) {
+        // a side pull sets the wrap width; the type keeps its size and
+        // reflows, so the pulled edge lands where the pointer is
+        const w = (p.autosize === false && p.w ? p.w : textLayout(shape).w) * sx
+        return { ...shape, props: { ...p, autosize: false, w: Math.max(20, w) } }
+      }
+      // a uniform (corner) scale grows the type itself
+      return { ...shape, props: { ...p, scale: Math.max(0.2, (p.scale || 1) * sx), ...(p.autosize === false && p.w ? { w: p.w * sx } : {}) } }
     }
     case 'note': {
       const s = Math.sqrt(Math.abs(sx * sy))

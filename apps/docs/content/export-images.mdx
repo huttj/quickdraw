@@ -55,6 +55,28 @@ const blob = await editor.exportImage({
 Exports render the same way the canvas does — grids included when the
 paper background is kept — so what you see is what you save.
 
+## SVG
+
+The board menu also exports SVG (the whole board or the selection), and
+`onSave` receives it as an `image/svg+xml` blob with `format` set to
+`'svg'`. From code:
+
+```js
+const svg = editor.exportSvg({
+  background: true,   // paper (and grid) behind the drawing
+  margin: 48,
+  ids: null,          // or a Set of shape ids
+})
+// a string — save it, inline it, hand it to a design tool
+```
+
+Every shape has a vector twin built from the same geometry the canvas
+draws with: the pencil's pressure outline, the hand-drawn wobble on
+shapes, bent arrows, wrapped text, sticky notes with their shadow, and
+images (cropped ones clip their full source). Text uses the board's font
+stacks, so the viewer's fonts do the rendering. The isometric grid has no
+rectangular tile and is left off the paper.
+
 ## React Native
 
 `exportPng` crosses the bridge and resolves with a data URL, ready for

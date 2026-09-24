@@ -7,9 +7,11 @@ import { Store, newId } from './store.js'
 import { themeOf, SIZES, FONT_SIZES, GEO_IDS, COLOR_IDS, GRID_IDS, GRID_STEP, GRID_MAJOR } from './palette.js'
 import {
   localBounds, pageBounds, toLocal, drawShape, hitShape, marqueeHits,
-  scaleShape, textLayout, noteLayout, NOTE_W, sampleLinePts,
+  scaleShape, textLayout, noteLayout, NOTE_W, sampleLinePts, imageFrame,
 } from './shapes.js'
 import { boundsUnion, boundsExpand, boundsContain, clamp, rotWith } from './geometry.js'
+import { sceneToSvg } from './svg.js'
+import { BINDABLE, insideShape, anchorAt, rebindArrow, remapBindings } from './bindings.js'
 
 const ZOOM_MIN = 0.05
 const ZOOM_MAX = 8
@@ -19,6 +21,15 @@ const RESIZE_CURSORS = {
   t: 'ns-resize', b: 'ns-resize', l: 'ew-resize', r: 'ew-resize',
 }
 const DEFAULT_STYLES = { color: 'blue', size: 'm', dash: 'draw', fill: 'none', font: 'draw' }
+// the eight box handles as fractions of a box — crop mode and the rotated
+// resize frame both hang theirs here
+const BOX_HANDLES = {
+  tl: [0, 0], t: [0.5, 0], tr: [1, 0], l: [0, 0.5], r: [1, 0.5], bl: [0, 1], b: [0.5, 1], br: [1, 1],
+}
+const CROP_MIN = 8 // page units — a crop window never collapses past this
+const LONG_PRESS = 500 // ms of a still touch before the context menu opens
+
+export const ALIGN_MODES = ['left', 'center', 'right', 'top', 'middle', 'bottom']
 
 export const TOOLS = ['select', 'hand', 'draw', 'highlight', 'eraser', 'laser', 'arrow', 'line', 'geo', 'text', 'note']
 
@@ -41,10 +52,14 @@ export class Editor {
     this.camera = camera || { x: 0, y: 0, z: 1 }
     this.styles = { ...DEFAULT_STYLES, ...(styles || {}) }
     this.geoKind = geoKind || 'rectangle'
-    this.tool = 'draw'
+    this.tool = 'select' // the pointer, like every desktop drawing tool
     this.selection = new Set()
     this.session = null
     this.editing = null // { id, textarea, field: 'text' | 'label' }
+    // the group a double-click dived into: its members select one at a time
+    this.focusedGroup = null
+    this.cropping = null // { id } while an image is in crop mode
+    this.bindHover = null // the shape an arrow end being dragged would tie to
     this.scribbles = [] // local laser strokes
     this.remoteScribbles = []
     this.remoteScribblesAt = 0
@@ -82,6 +97,8 @@ export class Editor {
     // history moves on its own channel: the end of a gesture batch changes
     // canUndo/canRedo without emitting a document diff
     this._unsubHistory = this.store.listenHistory(() => this.emit('history'))
+    // bound arrows follow their shapes inside the same transaction
+    this._unsubReact = this.store.react((diff) => this._reactBindings(diff))
     this.requestRender()
   }
 
@@ -248,6 +265,7 @@ export class Editor {
   setTool(tool) {
     if (!TOOLS.includes(tool)) return
     this._commitText()
+    this.endCrop()
     this.tool = tool
     if (tool !== 'select') this.setSelection([])
     this._syncCursor()
@@ -304,7 +322,7 @@ export class Editor {
   }
   setReadonly(ro) {
     this.readonly = !!ro
-    if (ro) { this._cancelSession(); this._commitText(); this.setSelection([]) }
+    if (ro) { this._cancelSession(); this._commitText(); this.endCrop(); this.setSelection([]) }
     this._syncCursor()
   }
   setPenMode(on) {
@@ -398,26 +416,213 @@ export class Editor {
     if (!this.selection.size) return
     const ids = []
     let z = this.store.maxZ()
+    const groups = {} // copies of a group stay a group — a fresh one
+    const idMap = {} // arrows tied to shapes copied alongside stay tied — to the copies
+    for (const id of this.selection) if (this.store.has(id)) idMap[id] = newId()
     this.store.transact(() => {
       for (const id of this.selection) {
         const s = this.store.get(id)
         if (!s || s.typeName === 'asset') continue
-        const copy = { ...s, id: newId(), x: s.x + offset, y: s.y + offset, z: ++z }
+        const copy = { ...s, id: idMap[id], x: s.x + offset, y: s.y + offset, z: ++z, props: remapBindings(s.props, idMap) }
+        if (s.groupId) copy.groupId = groups[s.groupId] ||= newId('group')
         this.store.put(copy)
         ids.push(copy.id)
       }
     })
     this.setSelection(ids)
   }
-  bringToFront() {
-    let z = this.store.maxZ()
-    const sel = this.store.shapes().filter((s) => this.selection.has(s.id)).sort((a, b) => a.z - b.z)
-    this.store.transact(() => { for (const s of sel) this.store.update(s.id, { z: ++z }) })
+
+  // ---- groups --------------------------------------------------------------
+  // A group is a shared `groupId` on its members — no container record, so
+  // the flat store keeps its one-level shape and every reader of the wire
+  // format keeps working. Selecting any member selects them all; a
+  // double-click focuses the group so its members can be picked one by one.
+  groupMembers(groupId) {
+    return this.store.shapes().filter((s) => s.groupId === groupId).map((s) => s.id)
   }
-  sendToBack() {
-    let z = this.store.minZ()
-    const sel = this.store.shapes().filter((s) => this.selection.has(s.id)).sort((a, b) => b.z - a.z)
-    this.store.transact(() => { for (const s of sel) this.store.update(s.id, { z: --z }) })
+  // the given ids plus every sibling of a grouped one — unless that group is
+  // the focused one, where a member stands alone
+  _withGroups(ids) {
+    const out = new Set()
+    for (const id of ids) {
+      const s = this.store.get(id)
+      if (!s) continue
+      out.add(id)
+      if (s.groupId && s.groupId !== this.focusedGroup) for (const m of this.groupMembers(s.groupId)) out.add(m)
+    }
+    return [...out]
+  }
+  // groups in the selection, and whether it can be grouped / ungrouped
+  selectionGroups() {
+    const g = new Set()
+    for (const id of this.selection) { const s = this.store.get(id); if (s?.groupId) g.add(s.groupId) }
+    return [...g]
+  }
+  canGroup() {
+    if (this.selection.size < 2) return false
+    // already exactly one whole group: nothing to do
+    const g = this.selectionGroups()
+    return !(g.length === 1 && this.groupMembers(g[0]).length === this.selection.size &&
+      [...this.selection].every((id) => this.store.get(id)?.groupId === g[0]))
+  }
+  canUngroup() { return this.selectionGroups().length > 0 }
+  groupSelection() {
+    if (!this.canGroup()) return
+    const ids = [...this.selection].filter((id) => this.store.has(id))
+    const groupId = newId('group')
+    // members of touched groups come along — groups are flat, so a group of
+    // groups merges into one
+    const all = new Set(ids)
+    for (const g of this.selectionGroups()) for (const m of this.groupMembers(g)) all.add(m)
+    this.store.transact(() => { for (const id of all) this.store.update(id, { groupId }) })
+    this.focusedGroup = null
+    this.setSelection([...all])
+  }
+  ungroupSelection() {
+    const ids = new Set()
+    for (const g of this.selectionGroups()) for (const m of this.groupMembers(g)) ids.add(m)
+    if (!ids.size) return
+    this.store.transact(() => {
+      for (const id of ids) {
+        const { groupId, ...rest } = this.store.get(id)
+        this.store.put(rest)
+      }
+    })
+    this.focusedGroup = null
+    this.setSelection([...this.selection])
+  }
+  _groupBounds(groupId) {
+    let b = null
+    for (const id of this.groupMembers(groupId)) b = boundsUnion(b, pageBounds(this.store.get(id)))
+    return b
+  }
+
+  // ---- z order -------------------------------------------------------------
+  // The selection moves as a block, relative order kept. A one-step move hops
+  // the block over its nearest unselected neighbour and lands on fractional
+  // z between the shapes around it — only the moved shapes change, so the
+  // diff stays small for sync. Highlights live on their own layer under the
+  // ink (see shapesSorted), so they only ever trade places with highlights.
+  bringToFront() { this._reorder(1, true) }
+  sendToBack() { this._reorder(-1, true) }
+  bringForward() { this._reorder(1, false) }
+  sendBackward() { this._reorder(-1, false) }
+  _reorder(dir, toEnd) {
+    const sel = this.selection
+    if (!sel.size) return
+    const layer = (s) => (s.type === 'highlight' ? 0 : 1)
+    const all = this.shapesSorted()
+    const moves = [] // [picked[], below, above]
+    for (const L of [0, 1]) {
+      const list = all.filter((s) => layer(s) === L)
+      const picked = list.filter((s) => sel.has(s.id))
+      const rest = list.filter((s) => !sel.has(s.id))
+      if (!picked.length || !rest.length) continue
+      let below = null, above = null // the unselected neighbours the block lands between
+      if (toEnd) {
+        if (dir > 0) below = rest[rest.length - 1]
+        else above = rest[0]
+      } else if (dir > 0) {
+        // past the first unselected shape above the lowest selected one
+        const from = list.indexOf(picked[0])
+        below = list.slice(from + 1).find((s) => !sel.has(s.id))
+        if (!below) continue // already on top
+        above = rest[rest.indexOf(below) + 1] || null
+      } else {
+        const from = list.indexOf(picked[picked.length - 1])
+        above = list.slice(0, from).reverse().find((s) => !sel.has(s.id))
+        if (!above) continue // already at the bottom
+        below = rest[rest.indexOf(above) - 1] || null
+      }
+      moves.push([picked, below, above])
+    }
+    if (!moves.length) return
+    this.store.transact(() => {
+      for (const [picked, below, above] of moves) {
+        const n = picked.length
+        if (below && above && above.z - below.z < 1e-6 * (n + 1)) {
+          // the gap has been halved too many times to split again: give every
+          // shape a whole number and start over on clean ground
+          this.shapesSorted().forEach((s, i) => this.store.update(s.id, { z: i + 1 }))
+          return this._reorder(dir, toEnd)
+        }
+        picked.forEach((s, k) => {
+          const z = !below ? above.z - (n - k)
+            : !above ? below.z + k + 1
+              : below.z + ((above.z - below.z) * (k + 1)) / (n + 1)
+          this.store.update(s.id, { z })
+        })
+      }
+    })
+  }
+
+  // ---- align / distribute --------------------------------------------------
+  // Units: a group moves as one block, everything else on its own. Bounds
+  // are page-space, rotation included, so rotated shapes line up on what
+  // you see.
+  _selectionUnits() {
+    const units = new Map()
+    for (const id of this.selection) {
+      const s = this.store.get(id)
+      if (!s) continue
+      const key = s.groupId && s.groupId !== this.focusedGroup ? 'g:' + s.groupId : 's:' + id
+      const u = units.get(key) || { ids: [], b: null }
+      u.ids.push(id)
+      u.b = boundsUnion(u.b, pageBounds(s))
+      units.set(key, u)
+    }
+    return [...units.values()]
+  }
+  // mode: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+  alignSelection(mode) {
+    if (!ALIGN_MODES.includes(mode)) return
+    const units = this._selectionUnits()
+    if (units.length < 2) return
+    let all = null
+    for (const u of units) all = boundsUnion(all, u.b)
+    this.store.transact(() => {
+      for (const { ids, b } of units) {
+        const dx = mode === 'left' ? all.x - b.x
+          : mode === 'center' ? all.x + all.w / 2 - (b.x + b.w / 2)
+            : mode === 'right' ? all.x + all.w - (b.x + b.w) : 0
+        const dy = mode === 'top' ? all.y - b.y
+          : mode === 'middle' ? all.y + all.h / 2 - (b.y + b.h / 2)
+            : mode === 'bottom' ? all.y + all.h - (b.y + b.h) : 0
+        this._nudge(ids, dx, dy)
+      }
+    })
+  }
+  // axis: 'horizontal' | 'vertical' — even gaps between neighbours, the two
+  // outermost stay where they are
+  distributeSelection(axis) {
+    const h = axis === 'horizontal'
+    const units = this._selectionUnits()
+    if (units.length < 3) return
+    const mid = (b) => (h ? b.x + b.w / 2 : b.y + b.h / 2)
+    const size = (b) => (h ? b.w : b.h)
+    const pos = (b) => (h ? b.x : b.y)
+    units.sort((a, b) => mid(a.b) - mid(b.b))
+    const first = units[0].b, last = units[units.length - 1].b
+    const span = pos(last) + size(last) - pos(first)
+    const inner = units.reduce((n, u) => n + size(u.b), 0)
+    const gap = (span - inner) / (units.length - 1)
+    this.store.transact(() => {
+      let cursor = pos(first) + size(first)
+      for (let i = 1; i < units.length - 1; i++) {
+        const u = units[i]
+        const target = cursor + gap
+        const d = target - pos(u.b)
+        this._nudge(u.ids, h ? d : 0, h ? 0 : d)
+        cursor = target + size(u.b)
+      }
+    })
+  }
+  _nudge(ids, dx, dy) {
+    if (!dx && !dy) return
+    for (const id of ids) {
+      const s = this.store.get(id)
+      if (s) this.store.update(id, { x: s.x + dx, y: s.y + dy })
+    }
   }
 
   shapesSorted() {
@@ -452,6 +657,8 @@ export class Editor {
     this._onDrop = (e) => this._drop(e)
     this._onDragOver = (e) => { e.preventDefault(); e.stopPropagation() }
     this._onPaste = (e) => this._paste(e)
+    this._onContextMenu = (e) => this._contextMenu(e)
+    c.addEventListener('contextmenu', this._onContextMenu)
     c.addEventListener('pointerdown', this._onDown)
     c.addEventListener('pointermove', this._onMove)
     c.addEventListener('pointerup', this._onUp)
@@ -554,6 +761,8 @@ export class Editor {
     if (this.penMode && e.pointerType === 'touch' && ss.type !== 'pinch' && ss.type !== 'panning') return
     const s = this._evPoint(e)
     const p = this.screenToPage(s.x, s.y)
+    // a press that travels is a drag, not a long press
+    if (this._pressTimer && ss.pressAt && Math.hypot(s.x - ss.pressAt.x, s.y - ss.pressAt.y) > 6) this._clearPressTimer()
 
     switch (ss.type) {
       case 'pinch': {
@@ -584,7 +793,7 @@ export class Editor {
           x: Math.min(ss.origin.x, p.x), y: Math.min(ss.origin.y, p.y),
           w: Math.abs(p.x - ss.origin.x), h: Math.abs(p.y - ss.origin.y),
         }
-        const hits = this.shapesSorted().filter((sh) => marqueeHits(sh, ss.rect)).map((sh) => sh.id)
+        const hits = this._withGroups(this.shapesSorted().filter((sh) => marqueeHits(sh, ss.rect)).map((sh) => sh.id))
         this.setSelection(ss.additive ? [...new Set([...ss.base, ...hits])] : hits)
         return
       }
@@ -592,6 +801,7 @@ export class Editor {
       case 'resizing': return this._dragResize(p, e)
       case 'rotating': return this._dragRotate(p, e)
       case 'handle': return this._dragHandle(p, e)
+      case 'cropping': return this._dragCrop(p, e)
       case 'pressing': {
         if (Math.hypot(s.x - ss.start.x, s.y - ss.start.y) > 4) {
           // the press became a drag — start translating (alt = drag a copy)
@@ -608,6 +818,7 @@ export class Editor {
     this._pointers.delete(e.pointerId)
     this._ptrType.delete(e.pointerId)
     if (e.pointerType === 'pen') this._penDown = false
+    this._clearPressTimer()
     const ss = this.session
     if (!ss) return
     if (ss.type === 'pinch') {
@@ -641,13 +852,20 @@ export class Editor {
       case 'handle':
         this.store.endBatch()
         this.session = null
+        this.bindHover = null
+        this._syncCursor()
+        this.requestRender()
+        return
+      case 'cropping':
+        // the crop batch stays open until crop mode ends — many drags, one undo
+        this.session = null
         this._syncCursor()
         this.requestRender()
         return
       case 'pressing': {
         // a clean click: selection settles to the pressed shape (or clears);
         // an additive click toggles — unless the down-stroke just added it
-        if (ss.hit) this.setSelection(ss.additive ? (ss.added ? [...this.selection] : this._toggled(ss.hit.id)) : [ss.hit.id])
+        if (ss.hit) this.setSelection(ss.additive ? (ss.added ? [...this.selection] : this._toggled(ss.pick)) : ss.pick)
         else if (!ss.additive) this.setSelection([])
         this.session = null
         return
@@ -655,10 +873,16 @@ export class Editor {
     }
   }
 
-  _toggled(id) {
+  // toggle a block (a shape, or a whole group) in and out of the selection
+  _toggled(ids) {
     const next = new Set(this.selection)
-    next.has(id) ? next.delete(id) : next.add(id)
+    if (ids.every((id) => next.has(id))) for (const id of ids) next.delete(id)
+    else for (const id of ids) next.add(id)
     return [...next]
+  }
+  _clearPressTimer() {
+    clearTimeout(this._pressTimer)
+    this._pressTimer = 0
   }
 
   _abortForPinch() {
@@ -673,7 +897,10 @@ export class Editor {
     } else if (['translating', 'resizing', 'rotating', 'handle', 'erasing'].includes(ss.type)) {
       this.store.endBatch()
     }
+    // a cropping drag just stops; its batch belongs to crop mode
     this.session = null
+    this.bindHover = null
+    this._clearPressTimer()
   }
   _cancelSession() {
     this._abortForPinch()
@@ -805,15 +1032,20 @@ export class Editor {
   }
 
   // ---- line / arrow --------------------------------------------------------
+  // An arrow drawn from inside a shape, or ended over one, ties itself to
+  // it: the end rides the shape's outline and follows it from then on. ⌥
+  // binds to the exact point instead of snapping to the shape's centre.
   _beginLineish(type, p, e) {
     const id = newId()
     this.store.beginBatch()
+    const target = this._bindTarget(p, id)
     this.store.put({
       id, typeName: 'shape', type, x: p.x, y: p.y, rot: 0, z: this.store.maxZ() + 1,
       props: {
         dx: 0.01, dy: 0.01, bend: 0,
         color: this.styles.color, size: this.styles.size,
         dash: this.styles.dash === 'draw' ? 'solid' : this.styles.dash,
+        ...(target ? { startBind: { id: target.id, ...anchorAt(target, p.x, p.y, { precise: e.altKey }) } } : {}),
       },
     })
     this.session = { type: 'lineish', id }
@@ -828,14 +1060,48 @@ export class Editor {
       dx = Math.cos(a) * len
       dy = Math.sin(a) * len
     }
-    this.store.update(s.id, { props: { dx, dy } })
+    this.store.update(s.id, { props: { dx, dy, ...this._endBinding(s, 'endBind', p, e) } })
   }
   _endLineish() {
     const s = this.store.get(this.session.id)
     this.session = null
+    this.bindHover = null
     if (s && Math.hypot(s.props.dx, s.props.dy) < 2 / this.camera.z) this.store.remove([s.id])
     this.store.endBatch()
     if (s) { this.setTool('select'); this.setSelection([s.id]) }
+  }
+  // the topmost shape with a body under the page point — the one an arrow
+  // end let go here would tie to
+  _bindTarget(p, excludeId) {
+    const list = this.shapesSorted()
+    for (let i = list.length - 1; i >= 0; i--) {
+      const s = list[i]
+      if (s.id === excludeId || !BINDABLE.has(s.type)) continue
+      if (insideShape(s, p.x, p.y)) return s
+    }
+    return null
+  }
+  // the props patch that ties (or frees) one end of `arrow` for a pointer at p
+  _endBinding(arrow, key, p, e) {
+    const target = this._bindTarget(p, arrow.id)
+    this.bindHover = target ? target.id : null
+    this.requestRender()
+    if (!target) return arrow.props[key] ? { [key]: undefined } : {}
+    return { [key]: { id: target.id, ...anchorAt(target, p.x, p.y, { precise: e.altKey }) } }
+  }
+  // arrows tied to shapes that moved, resized, rotated or vanished get
+  // re-solved inside the same transaction (see Store.react)
+  _reactBindings(diff) {
+    const touched = new Set([...Object.keys(diff.updated), ...Object.keys(diff.removed), ...Object.keys(diff.added)])
+    if (!touched.size) return
+    for (const s of this.store.shapes()) {
+      if (s.type !== 'arrow' && s.type !== 'line') continue
+      const p = s.props
+      if (!p.startBind && !p.endBind) continue
+      if (!touched.has(s.id) && !(p.startBind && touched.has(p.startBind.id)) && !(p.endBind && touched.has(p.endBind.id))) continue
+      const next = rebindArrow(s, this.store)
+      if (next !== s) this.store.put(next)
+    }
   }
 
   // ---- geo -----------------------------------------------------------------
@@ -1016,6 +1282,20 @@ export class Editor {
     const additive = e.shiftKey
     // handles first — they extend beyond the shapes
     const h = this._hitHandle(s.x, s.y)
+    if (this.cropping) {
+      const img = this.store.get(this.cropping.id)
+      const inside = img && hitShape(img, p.x, p.y, 0, this.store)
+      if (h?.kind === 'crop' || inside) {
+        this.session = {
+          type: 'cropping', which: h ? h.which : 'move',
+          orig: img, frame: imageFrame(img), start: toLocal(img, p.x, p.y),
+        }
+        this._syncCursor(h ? RESIZE_CURSORS[h.which] : 'move')
+        return
+      }
+      // a press away from the picture leaves crop mode and goes on as usual
+      this.endCrop()
+    }
     if (h) {
       this.store.beginBatch()
       if (h.kind === 'rotate') {
@@ -1030,22 +1310,41 @@ export class Editor {
       } else if (h.kind === 'handle') {
         this.session = { type: 'handle', which: h.which, id: h.id }
       } else {
-        this.session = { type: 'resizing', handle: h.which, init: this.selectionBounds(), orig: this._snapshotSelection() }
+        const one = this.selection.size === 1 ? this.store.get([...this.selection][0]) : null
+        this.session = {
+          type: 'resizing', handle: h.which, init: this.selectionBounds(), orig: this._snapshotSelection(),
+          rotated: !!(one && one.rot), // a rotated shape resizes in its own frame
+        }
         this._syncCursor(RESIZE_CURSORS[h.which] || 'default')
       }
       return
     }
     const hit = this.hitTest(p.x, p.y)
+    // a press outside the focused group steps back out of it
+    if (this.focusedGroup && hit?.groupId !== this.focusedGroup) this.focusedGroup = null
     if (hit) {
+      // a grouped shape brings its siblings along (unless its group is focused)
+      const pick = this._withGroups([hit.id])
       const wasSelected = this.selection.has(hit.id)
-      if (!wasSelected && !additive) this.setSelection([hit.id])
-      else if (additive && !wasSelected) this.setSelection([...this.selection, hit.id])
+      if (!wasSelected && !additive) this.setSelection(pick)
+      else if (additive && !wasSelected) this.setSelection([...this.selection, ...pick])
       // `added` marks a shape shift-selected on the way down, so the clean
       // click on the way up keeps it instead of toggling it straight back out
-      this.session = { type: 'pressing', hit, additive, added: additive && !wasSelected, start: s, page: p }
+      this.session = { type: 'pressing', hit, pick, additive, added: additive && !wasSelected, start: s, page: p, pressAt: s }
     } else {
-      this.session = { type: 'marquee', origin: p, rect: null, additive, base: [...this.selection] }
+      this.session = { type: 'marquee', origin: p, rect: null, additive, base: [...this.selection], pressAt: s }
       if (!additive) this.setSelection([])
+    }
+    // a still finger opens the context menu — touch has no right button
+    if (e.pointerType === 'touch') {
+      const ss = this.session
+      this._clearPressTimer()
+      this._pressTimer = setTimeout(() => {
+        this._pressTimer = 0
+        if (this.session !== ss) return
+        this.session = null
+        this._openContextMenu(s)
+      }, LONG_PRESS)
     }
   }
   _snapshotSelection() {
@@ -1059,15 +1358,65 @@ export class Editor {
   _beginTranslate(p, e) {
     if (!this.selection.size) return
     this.store.beginBatch()
-    if (e.altKey) this.duplicateSelection(0)
-    this.session = { type: 'translating', start: p, orig: this._snapshotSelection() }
+    // an arrow dragged away from a shape it's tied to lets go of it — unless
+    // the shape is coming along
+    this.store.transact(() => {
+      for (const id of this.selection) {
+        const s = this.store.get(id)
+        if (!s || (s.type !== 'arrow' && s.type !== 'line')) continue
+        const keep = {}
+        for (const k of ['startBind', 'endBind']) if (s.props[k] && this.selection.has(s.props[k].id)) keep[s.props[k].id] = s.props[k].id
+        const props = remapBindings(s.props, keep)
+        if (props !== s.props) this.store.put({ ...s, props })
+      }
+    })
+    const base = this._snapshotSelection()
+    this.session = { type: 'translating', start: p, last: p, shift: !!e.shiftKey, orig: base, base, copied: false }
+    if (e.altKey) this._copyForDrag()
+    this._syncCursor('move')
+  }
+  // ⌥ is live for the whole drag: while it's down the move is a copy — the
+  // originals sit where they were and copies ride the pointer — and letting
+  // go of it turns the drag back into a move. Whatever mode is on when the
+  // button comes up is what's kept.
+  _copyForDrag() {
+    const ss = this.session
+    if (!ss || ss.type !== 'translating' || ss.copied) return
+    ss.copied = true
+    this.store.transact(() => {
+      for (const [id, orig] of ss.base) if (this.store.has(id)) this.store.put(orig)
+      this.duplicateSelection(0)
+    })
+    ss.copyIds = [...this.selection]
+    ss.orig = this._snapshotSelection()
+    this._applyTranslate()
+    this._syncCursor('copy')
+  }
+  _uncopyForDrag() {
+    const ss = this.session
+    if (!ss || ss.type !== 'translating' || !ss.copied) return
+    ss.copied = false
+    this.store.transact(() => this.store.remove(ss.copyIds))
+    ss.copyIds = null
+    ss.orig = ss.base
+    this.setSelection([...ss.base.keys()])
+    this._applyTranslate()
     this._syncCursor('move')
   }
   _dragTranslate(p, e) {
     const ss = this.session
-    let dx = p.x - ss.start.x
-    let dy = p.y - ss.start.y
-    if (e.shiftKey) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0)
+    ss.last = p
+    ss.shift = !!e.shiftKey
+    if (e.altKey && !ss.copied) this._copyForDrag()
+    else if (!e.altKey && ss.copied) this._uncopyForDrag()
+    this._applyTranslate()
+  }
+  // the moved shapes follow the pointer's offset from the press
+  _applyTranslate() {
+    const ss = this.session
+    let dx = ss.last.x - ss.start.x
+    let dy = ss.last.y - ss.start.y
+    if (ss.shift) Math.abs(dx) > Math.abs(dy) ? (dy = 0) : (dx = 0)
     this.store.transact(() => {
       for (const [id, orig] of ss.orig) {
         if (this.store.has(id)) this.store.update(id, { x: orig.x + dx, y: orig.y + dy })
@@ -1080,11 +1429,28 @@ export class Editor {
     this._syncCursor()
     this.requestRender()
   }
+  // The scale pair a handle pull comes to, given what's selected. Corners go
+  // proportional on shift, and always for shapes that only scale as a whole
+  // (images, notes, text). A side pull on a whole-scaling shape scales it as
+  // a whole by that axis, so its far edge stays pinned instead of drifting;
+  // text takes a side pull as its wrap width (see scaleShape).
+  _resizeScales(handle, sx, sy, shapes, e) {
+    const corner = handle.length === 2
+    const whole = shapes.every((sh) => ['image', 'note', 'text'].includes(sh.type))
+    const notes = shapes.every((sh) => sh.type === 'note' || sh.type === 'image')
+    if (corner && (e.shiftKey || whole)) { const s = Math.max(sx, sy); return [s, s] }
+    if (!corner && notes && shapes.every((sh) => sh.type === 'note')) { const s = handle === 'l' || handle === 'r' ? sx : sy; return [s, s] }
+    return [sx, sy]
+  }
+  // ⌥ (or ctrl) resizes about the centre instead of the far edge
+  _fromCenter(e) { return !!(e.altKey || e.ctrlKey) }
   _dragResize(p, e) {
     const ss = this.session
+    if (ss.rotated) return this._dragResizeRotated(p, e)
     const { handle, init } = ss
-    const ax = handle.includes('l') ? init.x + init.w : init.x // anchor
-    const ay = handle.includes('t') ? init.y + init.h : init.y
+    const center = this._fromCenter(e)
+    const ax = center ? init.x + init.w / 2 : handle.includes('l') ? init.x + init.w : init.x // anchor
+    const ay = center ? init.y + init.h / 2 : handle.includes('t') ? init.y + init.h : init.y
     // scales clamp positive — dragging past the anchor pins at tiny, no flips
     let sx = handle.includes('l') || handle.includes('r')
       ? (p.x - ax) / ((handle.includes('l') ? init.x : init.x + init.w) - ax)
@@ -1094,13 +1460,7 @@ export class Editor {
       : 1
     sx = isFinite(sx) ? Math.max(0.02, sx) : 1
     sy = isFinite(sy) ? Math.max(0.02, sy) : 1
-    const corner = handle.length === 2
-    // corners keep proportions when shift asks, or when everything selected
-    // is happier uniform (images, notes, text)
-    const uniform =
-      corner &&
-      (e.shiftKey || [...ss.orig.values()].every((sh) => ['image', 'note', 'text'].includes(sh.type)))
-    if (uniform) sx = sy = Math.max(sx, sy)
+    ;[sx, sy] = this._resizeScales(handle, sx, sy, [...ss.orig.values()], e)
     this.store.transact(() => {
       for (const [id, orig] of ss.orig) {
         if (!this.store.has(id)) continue
@@ -1109,6 +1469,46 @@ export class Editor {
         this.store.put({ ...scaled, x: ax + (orig.x - ax) * sx, y: ay + (orig.y - ay) * sy })
       }
     })
+  }
+  // A single rotated shape resizes in its own frame: the pointer is taken
+  // into the shape's starting coordinates, the box is resized there with the
+  // opposite edge anchored, and the result is placed so that box lands back
+  // on the page under the same rotation — the anchor stays put on screen.
+  _dragResizeRotated(p, e) {
+    const ss = this.session
+    const [id, orig] = [...ss.orig][0]
+    if (!this.store.has(id)) return
+    const h = ss.handle
+    const lb = localBounds(orig)
+    const l = toLocal(orig, p.x, p.y)
+    const center = this._fromCenter(e)
+    const cx = lb.x + lb.w / 2, cy = lb.y + lb.h / 2
+    let x0 = lb.x, y0 = lb.y, x1 = lb.x + lb.w, y1 = lb.y + lb.h
+    // sizes pin at tiny instead of flipping, like the unrotated resize
+    const minW = lb.w * 0.02, minH = lb.h * 0.02
+    if (h.includes('l')) x0 = Math.min(l.x, (center ? cx : x1) - minW)
+    if (h.includes('r')) x1 = Math.max(l.x, (center ? cx : x0) + minW)
+    if (h.includes('t')) y0 = Math.min(l.y, (center ? cy : y1) - minH)
+    if (h.includes('b')) y1 = Math.max(l.y, (center ? cy : y0) + minH)
+    if (center) {
+      // the far edge mirrors the pulled one about the centre
+      if (h.includes('l')) x1 = 2 * cx - x0; else if (h.includes('r')) x0 = 2 * cx - x1
+      if (h.includes('t')) y1 = 2 * cy - y0; else if (h.includes('b')) y0 = 2 * cy - y1
+    }
+    const [sx, sy] = this._resizeScales(h, (x1 - x0) / lb.w, (y1 - y0) / lb.h, [orig], e)
+    // rebuild the box from the settled scales: about the centre, or away
+    // from the anchored edge (the top/left for an axis that wasn't pulled)
+    if (center) { x0 = cx - (lb.w * sx) / 2; x1 = cx + (lb.w * sx) / 2; y0 = cy - (lb.h * sy) / 2; y1 = cy + (lb.h * sy) / 2 }
+    else {
+      if (h.includes('l')) x0 = x1 - lb.w * sx; else x1 = x0 + lb.w * sx
+      if (h.includes('t')) y0 = y1 - lb.h * sy; else y1 = y0 + lb.h * sy
+    }
+    const sc = scaleShape(orig, sx, sy)
+    const nb = localBounds(sc)
+    // the new box's centre in the starting frame, then on the page; the
+    // shape then pivots on that centre, so the box lands where it was framed
+    const c = rotWith(orig.x + (x0 + x1) / 2, orig.y + (y0 + y1) / 2, orig.x + lb.x + lb.w / 2, orig.y + lb.y + lb.h / 2, orig.rot)
+    this.store.put({ ...sc, x: c.x - nb.x - nb.w / 2, y: c.y - nb.y - nb.h / 2 })
   }
   _dragRotate(p, e) {
     const ss = this.session
@@ -1137,7 +1537,7 @@ export class Editor {
     const pr = s.props
     if (ss.which === 'start') {
       const ex = s.x + pr.dx, ey = s.y + pr.dy
-      this.store.update(s.id, { x: p.x, y: p.y, props: { dx: ex - p.x, dy: ey - p.y } })
+      this.store.update(s.id, { x: p.x, y: p.y, props: { dx: ex - p.x, dy: ey - p.y, ...this._endBinding(s, 'startBind', p, e) } })
     } else if (ss.which === 'end') {
       let dx = p.x - s.x, dy = p.y - s.y
       if (e.shiftKey) {
@@ -1146,7 +1546,7 @@ export class Editor {
         dx = Math.cos(a) * len
         dy = Math.sin(a) * len
       }
-      this.store.update(s.id, { props: { dx, dy } })
+      this.store.update(s.id, { props: { dx, dy, ...this._endBinding(s, 'endBind', p, e) } })
     } else if (ss.which === 'bend') {
       // signed distance of the pointer from the straight chord
       const len = Math.hypot(pr.dx, pr.dy) || 1
@@ -1154,6 +1554,149 @@ export class Editor {
       const bend = (p.x - (s.x + pr.dx / 2)) * nx + (p.y - (s.y + pr.dy / 2)) * ny
       this.store.update(s.id, { props: { bend: Math.abs(bend) < 4 / this.camera.z ? 0 : bend } })
     }
+  }
+
+  // ---- image crop ----------------------------------------------------------
+  // Crop mode: the image's box becomes a window onto the picture. The whole
+  // source shows through faintly, the box handles trim the window, and a drag
+  // inside slides the picture behind it. Everything is worked in the shape's
+  // starting frame, so a rotated picture stays visually pinned while its box
+  // (and with it, its rotation pivot) changes. One batch for the whole mode:
+  // any number of drags undo as one step.
+  startCrop(id) {
+    const s = this.store.get(id)
+    if (!s || s.type !== 'image' || this.readonly || this.cropping?.id === id) return
+    this.endCrop()
+    this._commitText()
+    if (this.tool !== 'select') this.setTool('select')
+    this.setSelection([id])
+    this.store.beginBatch()
+    this.cropping = { id }
+    this.emit('crop')
+    this.requestRender()
+  }
+  endCrop() {
+    if (!this.cropping) return
+    this.cropping = null
+    this.store.endBatch()
+    this.emit('crop')
+    this.requestRender()
+  }
+  // back to the whole picture, the window's centre staying put
+  resetCrop(id = [...this.selection][0]) {
+    const s = id && this.store.get(id)
+    if (!s || s.type !== 'image' || !s.props.crop) return
+    const f = imageFrame(s)
+    this.store.put(this._cropPatch(s, f, f))
+  }
+  // the shape with a new window (`win`) onto the source rect (`frame`), both
+  // in orig's local frame. A rotated shape pivots on its own centre, so the
+  // window's centre is the one point that must land where it visually is.
+  _cropPatch(orig, frame, win) {
+    const p = orig.props
+    const c = rotWith(orig.x + win.x + win.w / 2, orig.y + win.y + win.h / 2, orig.x + p.w / 2, orig.y + p.h / 2, orig.rot || 0)
+    const crop = { x: (win.x - frame.x) / frame.w, y: (win.y - frame.y) / frame.h, w: win.w / frame.w, h: win.h / frame.h }
+    const full = crop.x <= 1e-6 && crop.y <= 1e-6 && crop.w >= 1 - 1e-6 && crop.h >= 1 - 1e-6
+    const { crop: _drop, ...rest } = p
+    const props = { ...rest, w: win.w, h: win.h, ...(full ? {} : { crop }) }
+    return { ...orig, x: c.x - win.w / 2, y: c.y - win.h / 2, props }
+  }
+  _dragCrop(p) {
+    const ss = this.session
+    const { orig, frame } = ss
+    const l = toLocal(orig, p.x, p.y)
+    const dx = l.x - ss.start.x, dy = l.y - ss.start.y
+    const w0 = orig.props.w, h0 = orig.props.h
+    let win = { x: 0, y: 0, w: w0, h: h0 }, fr = frame
+    if (ss.which === 'move') {
+      // slide the picture behind the window, never past its edges
+      fr = { ...frame, x: clamp(frame.x + dx, w0 - frame.w, 0), y: clamp(frame.y + dy, h0 - frame.h, 0) }
+    } else {
+      const h = ss.which
+      let x0 = 0, y0 = 0, x1 = w0, y1 = h0
+      if (h.includes('l')) x0 = clamp(dx, frame.x, x1 - CROP_MIN)
+      if (h.includes('r')) x1 = clamp(w0 + dx, x0 + CROP_MIN, frame.x + frame.w)
+      if (h.includes('t')) y0 = clamp(dy, frame.y, y1 - CROP_MIN)
+      if (h.includes('b')) y1 = clamp(h0 + dy, y0 + CROP_MIN, frame.y + frame.h)
+      win = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+    this.store.put(this._cropPatch(orig, fr, win))
+  }
+  // a shape-local point on screen, the shape's rotation applied
+  _localToScreen(s, lx, ly) {
+    const lb = localBounds(s)
+    const r = rotWith(s.x + lx, s.y + ly, s.x + lb.x + lb.w / 2, s.y + lb.y + lb.h / 2, s.rot || 0)
+    return this.pageToScreen(r.x, r.y)
+  }
+  _hitCropHandle(sx, sy) {
+    const s = this.cropping && this.store.get(this.cropping.id)
+    if (!s) return null
+    for (const [which, h] of this._boxHandles(s)) {
+      if (Math.abs(h.x - sx) <= HANDLE && Math.abs(h.y - sy) <= HANDLE) return which
+    }
+    return null
+  }
+  // the eight handles of a shape's own (rotated) box, on screen: [which, {x, y}]
+  _boxHandles(s) {
+    const lb = localBounds(s)
+    return Object.entries(BOX_HANDLES).map(([which, [fx, fy]]) =>
+      [which, this._localToScreen(s, lb.x + fx * lb.w, lb.y + fy * lb.h)])
+  }
+
+  // ---- context menu --------------------------------------------------------
+  _contextMenu(e) {
+    if (this.readonly) return
+    if (e.target !== this.canvas && e.target !== this.overlay && e.target !== this.container) return
+    e.preventDefault()
+    this._openContextMenu(this._evPoint(e))
+  }
+  // right-click / long press at a screen point: the shape under it (with its
+  // group) becomes the selection unless it's already in it, then the UI layer
+  // gets the word. Hosts drawing their own chrome listen for 'contextmenu'.
+  _openContextMenu(s) {
+    this._commitText()
+    const p = this.screenToPage(s.x, s.y)
+    const hit = this.hitTest(p.x, p.y)
+    if (hit) {
+      if (this.tool !== 'select') this.setTool('select')
+      if (!this.selection.has(hit.id)) this.setSelection(this._withGroups([hit.id]))
+    } else if (!this.cropping) this.setSelection([])
+    this.emit('contextmenu', { x: s.x, y: s.y, page: p, hit })
+  }
+
+  // ---- placing from the toolbar --------------------------------------------
+  // A tool dragged off the dock lands here: a ready-made shape at the drop
+  // point, in the current styles, selected — text and notes already in edit.
+  // kind: 'text' | 'note' | 'arrow' | 'line' | 'geo' (current kind) | a geo id
+  dropShape(kind, at) {
+    if (this.readonly) return null
+    this._commitText()
+    this.endCrop()
+    if (kind === 'text' || kind === 'note') {
+      kind === 'text' ? this._placeText(at) : this._placeNote(at)
+      return [...this.selection][0] || null
+    }
+    const st = this.styles
+    const id = newId()
+    const base = { id, typeName: 'shape', rot: 0, z: this.store.maxZ() + 1 }
+    let shape
+    if (kind === 'arrow' || kind === 'line') {
+      shape = {
+        ...base, type: kind, x: at.x - 80, y: at.y,
+        props: { dx: 160, dy: 0, bend: 0, color: st.color, size: st.size, dash: st.dash === 'draw' ? 'solid' : st.dash },
+      }
+    } else {
+      const geo = kind === 'geo' ? this.geoKind : kind
+      if (!GEO_IDS.includes(geo)) return null
+      shape = {
+        ...base, type: 'geo', x: at.x - 80, y: at.y - 80,
+        props: { geo, w: 160, h: 160, color: st.color, size: st.size, dash: st.dash, fill: st.fill, font: st.font },
+      }
+    }
+    this.store.put(shape)
+    this.setTool('select')
+    this.setSelection([id])
+    return id
   }
 
   // the pointer tells you what a press would do: resize arrows over handles,
@@ -1174,9 +1717,31 @@ export class Editor {
     this._syncCursor(hit && this.selection.has(hit.id) ? 'move' : null)
   }
 
+  // The rotate knob: 22px out from the middle of the top edge. A single
+  // rotated shape hangs it off ITS top edge, so the knob turns with the
+  // frame instead of hovering over the axis-aligned box. Returns the knob
+  // (x, y) and the point it attaches to (ax, ay), in screen px.
+  _rotateHandle(one) {
+    if (one && one.rot) {
+      const lb = localBounds(one)
+      const a = this._localToScreen(one, lb.x + lb.w / 2, lb.y)
+      return { x: a.x + Math.sin(one.rot) * 22, y: a.y - Math.cos(one.rot) * 22, ax: a.x, ay: a.y }
+    }
+    const b = this.selectionBounds()
+    if (!b) return null
+    const tl = this.pageToScreen(b.x, b.y)
+    const br = this.pageToScreen(b.x + b.w, b.y + b.h)
+    const ax = (tl.x + br.x) / 2
+    return { x: ax, y: tl.y - 22, ax, ay: tl.y }
+  }
+
   // which handle sits at screen point? returns { kind, which, id }
   _hitHandle(sx, sy) {
     if (this.tool !== 'select' || !this.selection.size) return null
+    if (this.cropping) {
+      const which = this._hitCropHandle(sx, sy)
+      return which ? { kind: 'crop', which } : null
+    }
     const one = this.selection.size === 1 ? this.store.get([...this.selection][0]) : null
     // arrows and lines carry their own handles instead of a resize box
     if (one && (one.type === 'arrow' || one.type === 'line')) {
@@ -1199,22 +1764,26 @@ export class Editor {
     const br = this.pageToScreen(b.x + b.w, b.y + b.h)
     const rotatable = !one || !['arrow', 'line'].includes(one.type)
     if (rotatable) {
-      const rx = (tl.x + br.x) / 2
-      const ry = tl.y - 22
-      if (Math.hypot(rx - sx, ry - sy) <= HANDLE + 2) return { kind: 'rotate' }
+      const r = this._rotateHandle(one)
+      if (Math.hypot(r.x - sx, r.y - sy) <= HANDLE + 2) return { kind: 'rotate' }
     }
-    // resize handles are hidden for a single rotated shape (correct > buggy)
-    if (one && one.rot) return null
-    const xs = { l: tl.x, m: (tl.x + br.x) / 2, r: br.x }
-    const ys = { t: tl.y, m: (tl.y + br.y) / 2, b: br.y }
-    for (const which of ['tl', 'tr', 'bl', 'br', 't', 'b', 'l', 'r']) {
-      const hx = which.length === 2 ? xs[which[1]] : which === 'l' || which === 'r' ? xs[which] : xs.m
-      const hy = which.length === 2 ? ys[which[0]] : which === 't' || which === 'b' ? ys[which] : ys.m
-      if (Math.abs(hx - sx) <= HANDLE && Math.abs(hy - sy) <= HANDLE) {
-        return { kind: 'resize', which: which.length === 2 ? which : which === 'l' || which === 'r' ? which : which }
-      }
+    for (const [which, s] of this._resizeHandles(one, b)) {
+      if (Math.abs(s.x - sx) <= HANDLE && Math.abs(s.y - sy) <= HANDLE) return { kind: 'resize', which }
     }
     return null
+  }
+  // the resize handles on screen, [which, {x, y}]: a rotated single shape's
+  // ride its own frame, otherwise they sit on the selection's box. Text has
+  // no top/bottom handles — its height is its lines.
+  _resizeHandles(one, b) {
+    const names = one?.type === 'text' ? ['tl', 'tr', 'bl', 'br', 'l', 'r'] : Object.keys(BOX_HANDLES)
+    if (one && one.rot) return this._boxHandles(one).filter(([which]) => names.includes(which))
+    const tl = this.pageToScreen(b.x, b.y)
+    const br = this.pageToScreen(b.x + b.w, b.y + b.h)
+    return names.map((which) => {
+      const [fx, fy] = BOX_HANDLES[which]
+      return [which, { x: tl.x + (br.x - tl.x) * fx, y: tl.y + (br.y - tl.y) * fy }]
+    })
   }
 
   _dblClick(e) {
@@ -1223,6 +1792,12 @@ export class Editor {
     const p = this.screenToPage(s.x, s.y)
     const hit = this.hitTest(p.x, p.y)
     if (hit) {
+      if (hit.groupId && hit.groupId !== this.focusedGroup) {
+        // dive into the group: from here its members select one at a time
+        this.focusedGroup = hit.groupId
+        this.setSelection([hit.id])
+        return
+      }
       if (hit.type === 'text' || hit.type === 'note') {
         this.setSelection([hit.id])
         this._startTextEdit(hit.id, 'text')
@@ -1233,8 +1808,13 @@ export class Editor {
         this._startTextEdit(hit.id, 'label')
         return
       }
+      if (hit.type === 'image') {
+        this.cropping?.id === hit.id ? this.endCrop() : this.startCrop(hit.id)
+        return
+      }
       return
     }
+    if (this.cropping) { this.endCrop(); return }
     this._placeText(p)
   }
 
@@ -1248,9 +1828,12 @@ export class Editor {
       e.preventDefault()
       return
     }
+    // ⌥ pressed mid-drag (before the pointer moves again) still turns it into a copy
+    if (k === 'alt' && this.session?.type === 'translating') { this._copyForDrag(); return }
     if (meta && k === 'z') { e.preventDefault(); e.shiftKey ? this.store.redo() : this.store.undo(); return }
     if (meta && k === 'a') { e.preventDefault(); this.selectAll(); return }
     if (meta && k === 'd') { e.preventDefault(); this.duplicateSelection(); return }
+    if (meta && k === 'g') { e.preventDefault(); e.shiftKey ? this.ungroupSelection() : this.groupSelection(); return }
     if (meta && k === 'c') { e.preventDefault(); this.copySelection(); return }
     if (meta && k === 'x') { e.preventDefault(); this.copySelection().then(() => this.deleteSelection()); return }
     if (meta && k === 'v') { e.preventDefault(); this.pasteFromClipboard(); return }
@@ -1258,9 +1841,26 @@ export class Editor {
     if (meta && k === '-') { e.preventDefault(); this._zoomCenter(1 / 1.25); return }
     if (k === 'escape') {
       if (this.session) this._cancelSession()
-      else if (this.selection.size) this.setSelection([])
+      else if (this.cropping) this.endCrop()
+      else if (this.focusedGroup) {
+        // step back out: the whole group is the selection again
+        const g = this.focusedGroup
+        this.focusedGroup = null
+        this.setSelection(this.groupMembers(g))
+      } else if (this.selection.size) this.setSelection([])
       else this.setTool('select')
       return
+    }
+    // ⌥ + a letter: align / distribute (tldraw's map). e.code, because on a
+    // Mac the option key turns the letter into a symbol before it reaches us.
+    if (e.altKey && !meta && this.selection.size > 1) {
+      const align = { KeyA: 'left', KeyD: 'right', KeyW: 'top', KeyS: 'bottom', KeyH: 'center', KeyV: 'middle' }
+      if (e.shiftKey && (e.code === 'KeyH' || e.code === 'KeyV')) {
+        e.preventDefault()
+        this.distributeSelection(e.code === 'KeyH' ? 'horizontal' : 'vertical')
+        return
+      }
+      if (align[e.code]) { e.preventDefault(); this.alignSelection(align[e.code]); return }
     }
     // the UI layer listens for this and toggles the shortcuts overlay
     if (k === '?') { e.preventDefault(); this.emit('help'); return }
@@ -1271,10 +1871,12 @@ export class Editor {
       return
     }
     if (k === 'delete' || k === 'backspace') { this.deleteSelection(); return }
+    if (k === 'enter' && this.cropping) { e.preventDefault(); this.endCrop(); return }
     if (k === 'enter' && this.selection.size === 1) {
       const s = this.store.get([...this.selection][0])
       if (s && ['text', 'note'].includes(s.type)) { e.preventDefault(); this._startTextEdit(s.id, 'text') }
       else if (s && s.type === 'geo') { e.preventDefault(); this._startTextEdit(s.id, 'label') }
+      else if (s && s.type === 'image') { e.preventDefault(); this.startCrop(s.id) }
       return
     }
     if (k.startsWith('arrow')) {
@@ -1283,18 +1885,16 @@ export class Editor {
       const dy = k === 'arrowup' ? -d : k === 'arrowdown' ? d : 0
       if (this.selection.size) {
         e.preventDefault()
-        this.store.transact(() => {
-          for (const id of this.selection) {
-            const s = this.store.get(id)
-            if (s) this.store.update(id, { x: s.x + dx, y: s.y + dy })
-          }
-        })
+        this.store.transact(() => this._nudge([...this.selection], dx, dy))
       }
       return
     }
     if (!meta) {
-      if (k === ']') { this.bringToFront(); return }
-      if (k === '[') { this.sendToBack(); return }
+      // ] / [ step one layer; with shift they go all the way (tldraw's map).
+      // Shift turns the bracket into a brace on most layouts — accept both.
+      const shifted = e.shiftKey || k === '}' || k === '{'
+      if (k === ']' || k === '}') { shifted ? this.bringToFront() : this.bringForward(); return }
+      if (k === '[' || k === '{') { shifted ? this.sendToBack() : this.sendBackward(); return }
       const toolKeys = {
         v: 'select', '1': 'select', h: 'hand', d: 'draw', p: 'draw', b: 'draw',
         i: 'highlight', e: 'eraser', k: 'laser', a: 'arrow', l: 'line',
@@ -1306,17 +1906,28 @@ export class Editor {
       if (e.shiftKey && k === '!') { this.fitContent({ animate: 220 }); return }
     }
     if (e.shiftKey && k === '1') { this.fitContent({ animate: 220 }); return }
-    if (e.shiftKey && k === '0') {
-      const { w, h } = this.viewSize()
-      this.zoomAt(w / 2, h / 2, 1 / this.camera.z, { animate: 180 })
-    }
+    if (e.shiftKey && k === '0') this.resetZoom()
   }
   _keyUp(e) {
     if (e.key === ' ') { this.spaceHeld = false; this._syncCursor() }
+    // ⌥ let go mid-drag: back to a move
+    if (e.key === 'Alt' && this.session?.type === 'translating') this._uncopyForDrag()
   }
   _zoomCenter(mult) {
     const { w, h } = this.viewSize()
     this.zoomAt(w / 2, h / 2, mult, { animate: 140 })
+  }
+  // back to 1:1 about the middle of the view (⇧0)
+  resetZoom({ animate = 180 } = {}) {
+    const { w, h } = this.viewSize()
+    this.zoomAt(w / 2, h / 2, 1 / this.camera.z, { animate })
+  }
+  // open the text surface on a text, note (body) or geo (label) shape
+  editShapeText(id) {
+    const s = this.store.get(id)
+    if (!s || this.readonly) return
+    if (s.type === 'text' || s.type === 'note') this._startTextEdit(id, 'text')
+    else if (s.type === 'geo') this._startTextEdit(id, 'label')
   }
 
   _wheel(e) {
@@ -1394,13 +2005,18 @@ export class Editor {
         assetMap[a.id] = nid
         this.store.put({ ...a, id: nid })
       }
+      const groups = {} // pasted groups are new groups
+      const idMap = {}
+      for (const s of data.shapes) idMap[s.id] = newId()
       for (const s of data.shapes) {
-        const nid = newId()
+        const nid = idMap[s.id]
         ids.push(nid)
-        this.store.put({
+        const rec = {
           ...s, id: nid, x: s.x + 16, y: s.y + 16, z: ++z,
-          props: s.props.assetId ? { ...s.props, assetId: assetMap[s.props.assetId] || s.props.assetId } : s.props,
-        })
+          props: remapBindings(s.props.assetId ? { ...s.props, assetId: assetMap[s.props.assetId] || s.props.assetId } : s.props, idMap),
+        }
+        if (s.groupId) rec.groupId = groups[s.groupId] ||= newId('group')
+        this.store.put(rec)
       }
     })
     if (this.tool !== 'select') this.setTool('select')
@@ -1482,6 +2098,14 @@ export class Editor {
     for (const s of shapes) drawShape(ctx, s, { theme: this.theme, store: this.store, zoom: k })
     return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'))
   }
+  // The drawing as an SVG document string — vectors all the way, so it
+  // scales without limit and opens in any design tool. Same options as
+  // exportImage (no `scale`: there is no pixel density to pick).
+  exportSvg({ background = true, margin = 48, ids = null } = {}) {
+    const shapes = this.shapesSorted().filter((s) => !ids || ids.has(s.id))
+    if (!shapes.length) return null
+    return sceneToSvg(shapes, { theme: this.theme, store: this.store, grid: background ? this.grid : 'none', background, margin })
+  }
   async _decodeAssets(shapes) {
     const waits = []
     for (const s of shapes) {
@@ -1535,6 +2159,8 @@ export class Editor {
         // the floating textarea is the visible text while editing — but only on
         // screen; capture/export have no DOM, so they keep the canvas text
         hideText: hideEditing && this.editing?.id === s.id ? this.editing.field : null,
+        // the whole picture ghosts around the crop window — on screen only
+        cropPreview: hideEditing && this.cropping?.id === s.id,
         onAssetLoad: () => this.requestRender(),
       })
     }
@@ -1663,6 +2289,17 @@ export class Editor {
     if (this.editing) this._layoutTextEditor()
   }
 
+  // a 9px handle square at a screen point, turned with its shape
+  _drawHandle(ctx, h, rot) {
+    ctx.save()
+    ctx.translate(h.x, h.y)
+    if (rot) ctx.rotate(rot)
+    ctx.beginPath()
+    ctx.rect(-4.5, -4.5, 9, 9)
+    ctx.fill()
+    ctx.stroke()
+    ctx.restore()
+  }
   _renderOverlay(w, h, dpr) {
     const ctx = this.overlay.getContext('2d')
     ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -1671,8 +2308,48 @@ export class Editor {
     const cam = this.camera
     const t = this.theme
 
+    // crop mode: the source frame dashed, the window solid with its handles
+    const cropImg = this.cropping && this.store.get(this.cropping.id)
+    if (cropImg) {
+      const f = imageFrame(cropImg)
+      const quad = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(([lx, ly]) => this._localToScreen(cropImg, lx, ly))
+      const trace = (pts) => {
+        ctx.beginPath()
+        pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)))
+        ctx.closePath()
+      }
+      ctx.strokeStyle = t.selection
+      ctx.fillStyle = t.handleFill
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 4])
+      trace(quad(f.x, f.y, f.w, f.h))
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.lineWidth = 1.5
+      trace(quad(0, 0, cropImg.props.w, cropImg.props.h))
+      ctx.stroke()
+      for (const [, h] of this._boxHandles(cropImg)) this._drawHandle(ctx, h, cropImg.rot)
+    }
+
+    // groups: a dashed frame around each selected group, and around the
+    // focused one while you're inside it
+    if (this.tool === 'select' && !this.editing && !cropImg) {
+      const frames = new Set(this.selectionGroups())
+      if (this.focusedGroup) frames.add(this.focusedGroup)
+      ctx.strokeStyle = t.selection
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 4])
+      for (const g of frames) {
+        const b = this._groupBounds(g)
+        if (!b) continue
+        const tl = this.pageToScreen(b.x - 4, b.y - 4)
+        ctx.strokeRect(tl.x, tl.y, (b.w + 8) * cam.z, (b.h + 8) * cam.z)
+      }
+      ctx.setLineDash([])
+    }
+
     // selection
-    if (this.tool === 'select' && this.selection.size && !this.editing) {
+    if (this.tool === 'select' && this.selection.size && !this.editing && !cropImg) {
       const one = this.selection.size === 1 ? this.store.get([...this.selection][0]) : null
       ctx.strokeStyle = t.selection
       ctx.fillStyle = t.handleFill
@@ -1715,31 +2392,32 @@ export class Editor {
           const tl = this.pageToScreen(b.x, b.y)
           const br = this.pageToScreen(b.x + b.w, b.y + b.h)
           if (!(one && one.rot)) ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y)
-          // rotate handle
-          const rx = (tl.x + br.x) / 2
-          const ry = tl.y - 22
+          // rotate handle: a stem from the top edge to the knob
+          const r = this._rotateHandle(one)
+          const dx = (r.x - r.ax) / 22, dy = (r.y - r.ay) / 22
           ctx.beginPath()
-          ctx.moveTo(rx, tl.y)
-          ctx.lineTo(rx, ry + 5)
+          ctx.moveTo(r.ax, r.ay)
+          ctx.lineTo(r.x - dx * 5, r.y - dy * 5)
           ctx.stroke()
           ctx.beginPath()
-          ctx.arc(rx, ry, 5, 0, Math.PI * 2)
+          ctx.arc(r.x, r.y, 5, 0, Math.PI * 2)
           ctx.fill()
           ctx.stroke()
-          if (!(one && one.rot)) {
-            for (const [hx, hy] of [
-              [tl.x, tl.y], [br.x, tl.y], [tl.x, br.y], [br.x, br.y],
-              [(tl.x + br.x) / 2, tl.y], [(tl.x + br.x) / 2, br.y],
-              [tl.x, (tl.y + br.y) / 2], [br.x, (tl.y + br.y) / 2],
-            ]) {
-              ctx.beginPath()
-              ctx.rect(hx - 4.5, hy - 4.5, 9, 9)
-              ctx.fill()
-              ctx.stroke()
-            }
-          }
+          // resize handles: on the box — a rotated shape's own box, squares
+          // turned with it
+          for (const [, h] of this._resizeHandles(one, b)) this._drawHandle(ctx, h, one?.rot || 0)
         }
       }
+    }
+
+    // the shape an arrow end being dragged would tie to
+    const hover = this.bindHover && this.store.get(this.bindHover)
+    if (hover) {
+      const b = pageBounds(hover)
+      const tl = this.pageToScreen(b.x - 3, b.y - 3)
+      ctx.strokeStyle = t.selection
+      ctx.lineWidth = 2
+      ctx.strokeRect(tl.x, tl.y, (b.w + 6) * cam.z, (b.h + 6) * cam.z)
     }
 
     // marquee
@@ -1850,6 +2528,7 @@ export class Editor {
   destroy() {
     this._destroyed = true
     this._commitText()
+    this.endCrop()
     this._themeFade?.remove()
     this._themeFade = null
     cancelAnimationFrame(this._raf)
@@ -1858,6 +2537,7 @@ export class Editor {
     cancelAnimationFrame(this._laserRaf || 0)
     this._unsubStore()
     this._unsubHistory()
+    this._unsubReact()
     this._ro.disconnect()
     const c = this.container
     c.removeEventListener('pointerdown', this._onDown)
@@ -1871,7 +2551,9 @@ export class Editor {
     c.removeEventListener('drop', this._onDrop)
     c.removeEventListener('dragover', this._onDragOver)
     c.removeEventListener('paste', this._onPaste)
+    c.removeEventListener('contextmenu', this._onContextMenu)
     c.removeEventListener('blur', this._onBlur)
+    this._clearPressTimer()
     this.canvas.remove()
     this.overlay.remove()
     c.classList.remove('qd-root')

@@ -21,6 +21,26 @@ store.ids()          // every id
 store.size           // record count
 ```
 
+A shape record is `{ id, typeName: 'shape', type, x, y, rot, z, props }`,
+plus an optional `groupId` — grouped shapes simply share one; there is no
+group record. Type-specific state lives in `props` (an image's `crop`
+window, or an arrow's `startBind` / `endBind` ties to other shapes, for
+instance). Records are plain JSON all the way down.
+
+## Reactors
+
+Derived records — an arrow tied to a shape that just moved — are kept true
+by reactors: functions that run inside every local transaction, after its
+body and before it commits, and may write more records into it.
+
+```js
+store.react((diff) => { /* read diff, store.put(...) as needed */ })
+```
+
+What they write lands in the same diff and the same undo step. Remote
+diffs skip them: the peer's own reactors already did the work, and their
+result is in the diff.
+
 ## Diffs
 
 Every mutation happens in a transaction, and every transaction emits:

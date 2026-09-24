@@ -31,19 +31,37 @@ description: The full Quickdraw keyboard map — tools, editing, arranging, and 
 | `⌘A` | Select all |
 | `⌘C` / `⌘X` / `⌘V` | Copy / cut / paste |
 | `⌘D` | Duplicate |
+| `⌘G` / `⇧⌘G` | Group / ungroup |
 | `⌫` | Delete selection |
 | `⇧⌘⌫` | Clear the board (undoable) |
-| `Enter` | Edit the selected shape's text |
-| `Esc` | Done editing / clear selection |
+| `Enter` | Edit the selected shape's text, or crop the selected image |
+| `Esc` | Done editing / leave crop mode / step out of a group / clear selection |
+| Right-click or long press | Context menu |
 
 ## Arranging
 
 | Key | Action |
 | --- | --- |
-| `]` | Bring to front |
-| `[` | Send to back |
+| `]` / `[` | Bring forward / send backward (one step) |
+| `⇧]` / `⇧[` | Bring to front / send to back |
+| `⌥A` / `⌥D` | Align left / right |
+| `⌥W` / `⌥S` | Align top / bottom |
+| `⌥H` / `⌥V` | Align centers horizontally / vertically |
+| `⇧⌥H` / `⇧⌥V` | Distribute horizontally / vertically |
 | Arrow keys | Nudge selection |
 | `Shift` + arrows | Nudge farther |
+
+## Dragging
+
+| Modifier | While dragging |
+| --- | --- |
+| `⌥` | Move becomes a copy while held; let go and it's a move again. The drop keeps whichever is on |
+| `Shift` | Move along one axis; resize proportionally; rotate in 15° steps |
+| `⌥` or `Ctrl` | Resize about the centre |
+| `⌥` | Tie an arrow end to the exact point on a shape (instead of its centre) |
+
+Tools can also be dragged: pull the shape, arrow, line, text, or note tool
+off the dock and let go on the board to drop a ready-made one there.
 
 ## Camera
 

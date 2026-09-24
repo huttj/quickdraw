@@ -289,6 +289,7 @@
   transition: background 140ms ease, color 140ms ease;
 }
 .qd-menu-item:hover { background: var(--qd-hover); }
+.qd-menu-item:disabled, .qd-menu-item.qd-off { opacity: 0.38; pointer-events: none; }
 .qd-mi-ico { display: flex; flex: 0 0 16px; color: var(--qd-ink-soft); }
 .qd-mi-ico svg { width: 16px; height: 16px; }
 .qd-menu-item:hover .qd-mi-ico { color: inherit; }
@@ -375,6 +376,38 @@
 @media (prefers-reduced-motion: reduce) {
   .qd-submenu { animation: none; }
 }
+
+/* right-click / long-press menu: hangs off the pointer instead of the dock */
+.qd-popover.qd-ctx {
+  bottom: auto;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  animation-name: qd-ctx-in;
+}
+@keyframes qd-ctx-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* a tool being dragged off the dock: its icon rides under the pointer */
+.qd-drag-ghost {
+  position: absolute;
+  z-index: 60;
+  width: 42px;
+  height: 42px;
+  margin: -21px 0 0 -21px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--qd-pop-bg);
+  border: 1px solid var(--qd-border);
+  box-shadow: var(--qd-pop-shadow);
+  color: var(--qd-ink);
+  pointer-events: none;
+}
+.qd-drag-ghost svg { width: 22px; height: 22px; display: block; }
 
 /* ---- watermark ---- */
 /* Quiet by default, legible on hover; sits under the chrome so popovers and

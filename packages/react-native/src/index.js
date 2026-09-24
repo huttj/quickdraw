@@ -40,6 +40,7 @@ export { createBridge, encodeDispatch } from './bridge.js'
  *   setStyle(key, value), setGrid(grid), undo(), redo(), clear(), fitContent(),
  *   getSnapshot() -> Promise<snapshot>,
  *   exportPng(opts) -> Promise<dataUrl | null>
+ *   exportSvg(opts) -> Promise<svgString | null>
  */
 export const Quickdraw = forwardRef(function Quickdraw(props, ref) {
   const {
@@ -137,6 +138,7 @@ export const Quickdraw = forwardRef(function Quickdraw(props, ref) {
     fitContent: (animate) => st.bridge.post({ type: 'fitContent', animate }),
     getSnapshot: () => st.bridge.request({ type: 'getSnapshot' }),
     exportPng: (opts) => st.bridge.request({ type: 'exportPng', opts }),
+    exportSvg: (opts) => st.bridge.request({ type: 'exportSvg', opts }),
   }), [])
 
   return createElement(WebView, {

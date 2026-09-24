@@ -84,6 +84,9 @@ const handlers = {
   clear() { board.editor.clearBoard() },
   fitContent(m) { board.editor.fitContent({ animate: m.animate || 0 }) },
   getSnapshot(m) { post({ type: 'snapshot', id: m.id, snapshot: board.editor.store.getSnapshot() }) },
+  exportSvg(m) {
+    post({ type: 'export', id: m.id, dataUrl: board.editor.exportSvg(m.opts || {}) })
+  },
   async exportPng(m) {
     const blob = await board.editor.exportImage(m.opts || {})
     post({ type: 'export', id: m.id, dataUrl: blob ? await blobToDataUrl(blob) : null })
