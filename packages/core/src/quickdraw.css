@@ -453,7 +453,9 @@
 }
 .qd-minimap-toggle svg { width: 14px; height: 14px; }
 .qd-minimap:hover .qd-minimap-toggle, .qd-minimap-toggle:focus-visible { opacity: 1; }
-.qd-minimap-toggle:hover { background: var(--qd-hover); color: var(--qd-ink); }
+/* hovering the button itself lights it up like an active dock tool — a
+   translucent tint here would read as the button fading into the map */
+.qd-minimap-toggle:hover { background: var(--qd-on-bg); color: var(--qd-on-ink); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
 /* folded: the button is the whole panel */
 .qd-minimap.qd-folded .qd-minimap-toggle { position: static; opacity: 1; width: 30px; height: 30px; border-radius: 11px; }
 
