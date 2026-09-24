@@ -29,6 +29,10 @@ versioned in lockstep.
 - **Drag tools onto the board.** Pull the shape, arrow, line, text or note
   tool off the dock and let go on the board to drop a ready-made one there;
   `editor.dropShape(kind, at)` for custom UIs.
+- **Sticky notes resize freely.** Sides set the width or height, corners
+  both (Shift keeps proportions); the text rewraps and the type keeps its
+  size; a note never gets shorter than its words. Stored as `props.w` /
+  `props.h` (absent = the classic square).
 - **Text formatting.** While editing, ⌘B / ⌘I / ⌘U, ⇧⌘X (strike), ⌘E
   (code), ⇧⌘H (highlight) and ⌘K (link) apply to the selection, or to what
   you type next; a small bar above the text offers the same. Marks were

@@ -1322,7 +1322,7 @@ export class Editor {
       // text block, so committing doesn't jump the text — 20 = NOTE_PAD
       const yStart = Math.max(20, lay.boxH / 2 - lay.textH / 2)
       pos = this.pageToScreen(shape.x + 20 * s, shape.y + yStart * s)
-      w = (NOTE_W - 40) * s
+      w = (lay.boxW - 40) * s
       h = lay.textH * s
       align = 'center'
       ta.style.font = `500 ${lay.fontSize * s * z}px ${lay.font}`
@@ -1610,10 +1610,8 @@ export class Editor {
   // text takes a side pull as its wrap width (see scaleShape).
   _resizeScales(handle, sx, sy, shapes, e) {
     const corner = handle.length === 2
-    const whole = shapes.every((sh) => ['image', 'note', 'text'].includes(sh.type))
-    const notes = shapes.every((sh) => sh.type === 'note' || sh.type === 'image')
+    const whole = shapes.every((sh) => ['image', 'text'].includes(sh.type))
     if (corner && (e.shiftKey || whole)) { const s = Math.max(sx, sy); return [s, s] }
-    if (!corner && notes && shapes.every((sh) => sh.type === 'note')) { const s = handle === 'l' || handle === 'r' ? sx : sy; return [s, s] }
     return [sx, sy]
   }
   // ⌥ (or ctrl) resizes about the centre instead of the far edge

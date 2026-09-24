@@ -47,7 +47,7 @@ export function localBounds(shape) {
     }
     case 'note': {
       const l = noteLayout(shape)
-      return { x: 0, y: 0, w: NOTE_W * (p.scale || 1), h: l.boxH * (p.scale || 1) }
+      return { x: 0, y: 0, w: l.boxW * (p.scale || 1), h: l.boxH * (p.scale || 1) }
     }
     case 'image':
       return { x: 0, y: 0, w: p.w, h: p.h }
@@ -239,9 +239,12 @@ export function noteLayout(shape) {
   const fontSize = NOTE_FONT_SIZES[p.size]
   const font = FONTS[p.font || 'draw']
   const lh = fontSize * 1.35
-  const lines = wrapLines(p.text, font, fontSize, NOTE_W - NOTE_PAD * 2, p.marks)
+  // the sticky's box: props.w / props.h when it's been resized, else the
+  // classic square — and never shorter than its text needs
+  const boxW = p.w || NOTE_W
+  const lines = wrapLines(p.text, font, fontSize, boxW - NOTE_PAD * 2, p.marks)
   const textH = lines.length * lh
-  const l = { lines, fontSize, font, lh, textH, boxH: Math.max(NOTE_W, textH + NOTE_PAD * 2) }
+  const l = { lines, fontSize, font, lh, textH, boxW, boxH: Math.max(p.h || boxW, textH + NOTE_PAD * 2) }
   layoutCache.set(p, l)
   return l
 }
@@ -351,7 +354,7 @@ function textBlock(shape) {
   if (shape.type === 'note') {
     const l = noteLayout(shape)
     return { ...l, top: Math.max(NOTE_PAD, l.boxH / 2 - l.textH / 2), marks: p.marks, text: p.text, scale: p.scale || 1,
-      left: (line) => NOTE_W / 2 - line.w / 2 }
+      left: (line) => l.boxW / 2 - line.w / 2 }
   }
   if (shape.type === 'geo') {
     const l = geoLabelLayout(shape)
@@ -708,7 +711,7 @@ export function drawShape(ctx, shape, opts) {
       ctx.scale(s, s)
       ctx.fillStyle = col.note
       ctx.beginPath()
-      ctx.roundRect(0, 0, NOTE_W, l.boxH, 6)
+      ctx.roundRect(0, 0, l.boxW, l.boxH, 6)
       ctx.shadowColor = 'rgba(20, 16, 8, 0.22)'
       ctx.shadowBlur = 10
       ctx.shadowOffsetY = 4
@@ -887,8 +890,9 @@ export function scaleShape(shape, sx, sy, { handle } = {}) {
       return { ...shape, props: { ...p, scale: Math.max(0.2, (p.scale || 1) * sx), ...(p.autosize === false && p.w ? { w: p.w * sx } : {}) } }
     }
     case 'note': {
-      const s = Math.sqrt(Math.abs(sx * sy))
-      return { ...shape, props: { ...p, scale: Math.max(0.3, (p.scale || 1) * s) } }
+      // the box resizes freely; the type keeps its size and rewraps
+      const lay = noteLayout(shape)
+      return { ...shape, props: { ...p, w: Math.max(60, lay.boxW * sx), h: Math.max(40, lay.boxH * sy) } }
     }
     default:
       return shape

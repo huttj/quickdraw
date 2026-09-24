@@ -1593,24 +1593,36 @@ describe('resize pinning', () => {
     expect(editor.store.get('t').props.scale).toBeLessThan(s.props.scale)
   })
 
-  it('a side pull on a note scales it as a whole with the far edge pinned; a corner keeps the far corner', () => {
+  it('a note resizes freely: sides set width or height, corners both, the far edge pinned, the type unchanged', () => {
     const n = note(editor, 100, 100)
     editor.setTool('select')
     editor.setSelection(['n'])
     const b0 = pageBounds(n) // 200x200
+    // wider, from the right: height and type stay, the text rewraps to the new width
     drag(editor, [[b0.x + b0.w, b0.y + b0.h / 2], [b0.x + b0.w + 100, b0.y + b0.h / 2]])
     let s = editor.store.get('n')
-    expect(s.props.scale).toBeCloseTo(1.5)
+    expect(s.props.w).toBeCloseTo(300)
+    expect(s.props.h).toBeCloseTo(200)
+    expect(s.props.scale).toBe(1)
     expect(s.x).toBe(100)
-    expect(s.y).toBe(100) // top pinned too, grows down
-    // bottom-left corner pull: the top-right corner stays
+    expect(pageBounds(s).h).toBeCloseTo(200)
+    // shorter, from the bottom: a wide low sticky
+    drag(editor, [[b0.x + 150, b0.y + 200], [b0.x + 150, b0.y + 120]])
+    s = editor.store.get('n')
+    expect(s.props.h).toBeCloseTo(120)
+    expect(pageBounds(s).h).toBeCloseTo(120)
+    // a corner pull grows both, the top-right corner staying
     const b1 = pageBounds(s)
-    drag(editor, [[b1.x, b1.y + b1.h], [b1.x - 30, b1.y + b1.h + 30]])
+    drag(editor, [[b1.x, b1.y + b1.h], [b1.x - 30, b1.y + b1.h + 50]])
     s = editor.store.get('n')
     const b2 = pageBounds(s)
     expect(b2.x + b2.w).toBeCloseTo(b1.x + b1.w)
     expect(b2.y).toBeCloseTo(b1.y)
     expect(b2.w).toBeCloseTo(b1.w + 30)
+    expect(b2.h).toBeCloseTo(b1.h + 50)
+    // but never shorter than its words: lots of text holds the box open
+    editor.store.update('n', { props: { text: 'a sticky with far too many words to fit in a short box like this one', h: 40 } })
+    expect(pageBounds(editor.store.get('n')).h).toBeGreaterThan(40)
   })
 
   it('⌥ resizes about the centre, unrotated and rotated', () => {
