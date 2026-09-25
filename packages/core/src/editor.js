@@ -87,6 +87,11 @@ export class Editor {
     this.grid = GRID_IDS.includes(grid) ? grid : 'lines'
     this.readonly = !!readonly
     this.camera = camera || { x: 0, y: 0, z: 1 }
+    // Host hooks: decide per shape whether it is on the board at all (a
+    // filtered-out shape is not drawn, hit, selected, fitted or exported)
+    // and how opaque it draws (0..1). Both optional, read on every render.
+    this.shapeFilter = null
+    this.shapeAlpha = null
     // Host hook: a shape this returns true for is locked — the pointer never
     // picks it up (no press, marquee, double-click or context menu), though
     // it still draws, links still open, and the eraser still reaches it.
@@ -216,7 +221,7 @@ export class Editor {
   }
   contentBounds() {
     let b = null
-    for (const s of this.store.shapes()) b = boundsUnion(b, pageBounds(s))
+    for (const s of this.shapesSorted()) b = boundsUnion(b, pageBounds(s))
     return b
   }
   // Re-fit the camera to the drawn content with a margin — the transition
@@ -460,7 +465,7 @@ export class Editor {
   }
   selectAll() {
     if (this.tool !== 'select') this.setTool('select')
-    this.setSelection(this.store.shapes().filter((s) => !this.shapeLocked?.(s)).map((s) => s.id))
+    this.setSelection(this.shapesSorted().filter((s) => !this.shapeLocked?.(s)).map((s) => s.id))
   }
   duplicateSelection(offset = 16) {
     if (!this.selection.size) return
@@ -677,7 +682,9 @@ export class Editor {
     // highlight look the same over ink as under it, and keeps it on top of
     // a picture it was drawn over — the marker-on-paper feel without a
     // separate layer (tldraw does the same)
-    return this.store.shapes().sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1))
+    const f = this.shapeFilter
+    const list = f ? this.store.shapes().filter((s) => f(s)) : this.store.shapes()
+    return list.sort((a, b) => a.z - b.z || (a.id < b.id ? -1 : 1))
   }
   // The shape under a page point, topmost first. `inside` (the select tool)
   // also takes the empty middle of a hollow shape, and the empty space
@@ -908,7 +915,7 @@ export class Editor {
       case 'handle': return this._dragHandle(p, e)
       case 'cropping': return this._dragCrop(p, e)
       case 'pressing': {
-        if (Math.hypot(s.x - ss.start.x, s.y - ss.start.y) > 4) {
+        if (Math.hypot(s.x - ss.start.x, s.y - ss.start.y) > (e.pointerType === 'touch' ? 12 : 4)) {
           // the press became a drag — start translating (alt = drag a copy);
           // a linked shape held for a drag gets selected now
           if (ss.link && ss.hit && !this.selection.has(ss.hit.id)) this.setSelection(ss.pick)
@@ -939,9 +946,19 @@ export class Editor {
         this.session = null
         this._syncCursor()
         // a still tap beside the text while typing ends the edit; a drag only moved the view
-        if (ss.editing && ss.pressAt) {
+        if (ss.pressAt) {
           const s = this._evPoint(e)
-          if (Math.hypot(s.x - ss.pressAt.x, s.y - ss.pressAt.y) < 6) this._commitText()
+          const still = Math.hypot(s.x - ss.pressAt.x, s.y - ss.pressAt.y) < (e.pointerType === 'touch' ? 12 : 6)
+          if (ss.editing) {
+            // a still tap beside the text while typing ends the edit; a drag only moved the view
+            if (still) this._commitText()
+          } else if (still && this.tool === 'hand') {
+            // the hand follows a link it taps, like the pointer does
+            const p = this.screenToPage(s.x, s.y)
+            const hit = this.hitTest(p.x, p.y)
+            const link = hit && this._linkAt(hit, p)
+            if (link) (this.openLink || openUrl)(link)
+          }
         }
         return
       }
@@ -1303,7 +1320,7 @@ export class Editor {
     this.store.put({
       id, typeName: 'shape', type: 'note', x: p.x - NOTE_W / 2, y: p.y - NOTE_W / 2, rot: 0,
       z: this.store.maxZ() + 1,
-      props: { text: '', color: this.styles.color === DEFAULT_STYLES.color ? 'yellow' : this.styles.color, size: 'm', font: this.styles.font, scale: 1 },
+      props: { text: '', color: this.styles.color === DEFAULT_STYLES.color || this.styles.color === 'black' ? 'yellow' : this.styles.color, size: 'm', font: this.styles.font, scale: 1 },
     })
     this.setTool('select')
     this.setSelection([id])
@@ -2450,29 +2467,39 @@ export class Editor {
   // Programmatic paste (a menu item; ⌘V goes through the browser's own
   // paste event, which needs no permission). Images first, then HTML — that's
   // where tldraw keeps its shapes — then text: our payload, or plain words.
+  // Resolves with what happened: { what: 'image' | 'html' | 'text' | 'nothing' | 'error', types, error }.
+  // A phone only hands the clipboard over after its own confirmation, and some
+  // copies carry nothing the board can place; the host can say so.
   async pasteFromClipboard() {
+    const cb = navigator.clipboard
+    if (!cb || (!cb.read && !cb.readText)) return { what: 'error', types: [], error: new Error('no clipboard access') }
+    let types = []
     try {
-      if (navigator.clipboard.read) {
-        const items = await navigator.clipboard.read()
+      if (cb.read) {
+        const items = await cb.read()
+        types = items.flatMap((i) => i.types)
         for (const it of items) {
           const t = it.types.find((t2) => t2.startsWith('image/'))
           if (t) {
-            const blob = await it.getType(t)
-            this.importImageBlobs([blob])
-            return
+            await this.importImageBlobs([await it.getType(t)])
+            return { what: 'image', types }
           }
         }
         for (const it of items) {
           if (!it.types.includes('text/html')) continue
-          const html = await (await it.getType('text/html')).text()
-          if (await this._pasteHtml(html)) return
+          if (await this._pasteHtml(await (await it.getType('text/html')).text())) return { what: 'html', types }
         }
+        for (const it of items) {
+          if (!it.types.includes('text/plain')) continue
+          if (await this._pasteText(await (await it.getType('text/plain')).text())) return { what: 'text', types }
+        }
+        return { what: 'nothing', types }
       }
-    } catch {}
-    try {
-      const text = await navigator.clipboard.readText()
-      await this._pasteText(text)
-    } catch {}
+      if (await this._pasteText(await cb.readText())) return { what: 'text', types: ['text/plain'] }
+      return { what: 'nothing', types }
+    } catch (error) {
+      return { what: 'error', types, error }
+    }
   }
   // tldraw's clipboard HTML → its shapes on our board; true when it was that
   async _pasteHtml(html) {
@@ -2699,6 +2726,9 @@ export class Editor {
     for (const s of this.shapesSorted()) {
       const pb = pageBounds(s)
       if (pb.x + pb.w < vis.x || pb.x > vis.x + vis.w || pb.y + pb.h < vis.y || pb.y > vis.y + vis.h) continue
+      const alpha = this.shapeAlpha ? this.shapeAlpha(s) : 1
+      if (alpha <= 0) continue
+      if (alpha < 1) { ctx.save(); ctx.globalAlpha *= alpha }
       drawShape(ctx, s, {
         theme: this.theme, store: this.store, zoom: cam.z,
         ghost: this.session?.type === 'erasing' && this.session.hits.has(s.id),
@@ -2709,6 +2739,7 @@ export class Editor {
         cropPreview: hideEditing && this.cropping?.id === s.id,
         onAssetLoad: () => this.requestRender(),
       })
+      if (alpha < 1) ctx.restore()
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0)
   }

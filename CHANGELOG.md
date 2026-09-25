@@ -41,6 +41,19 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Host hooks for what shows.** `editor.shapeFilter` decides per shape
+  whether it is on the board at all (a filtered shape is not drawn, hit,
+  selected, fitted or exported) and `editor.shapeAlpha` how opaque it draws.
+- **Links on touch.** A finger may wobble a dozen pixels and still be a tap
+  on a link, and the hand tool follows a link it taps too.
+- **`pasteFromClipboard` reports.** It resolves with what it placed (an
+  image, tldraw content, text) or why nothing landed, and takes plain text
+  from the rich clipboard read, which phones need.
+- **Notes stay yellow with a black pen,** as with the default blue.
+- **No `-webkit-backdrop-filter`.** The prefixed form defeated the blur in
+  Chrome; current Safari takes the standard property.
+- **The board never selects text** or shows the touch callout: a long press
+  is for its own menu.
 - **Export and copy, the same everywhere.** Both menus offer "Export … as ▸"
   and "Copy … as ▸" with PNG, transparent PNG and SVG; they act on the selection
   when there is one, else on the whole board. Copying as SVG puts the

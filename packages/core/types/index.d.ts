@@ -386,6 +386,10 @@ export class Editor {
   cropping: { id: string } | null
   /** While an arrow end is being dragged: the id of the shape it would tie to, or null. */
   bindHover: string | null
+  /** Host hook: a shape this returns false for is not drawn, hit, selected, fitted or exported. */
+  shapeFilter: ((shape: ShapeRecord) => boolean) | null
+  /** Host hook: how opaque a shape draws on screen (0..1). */
+  shapeAlpha: ((shape: ShapeRecord) => number) | null
   /** Host hook: a shape this returns true for cannot be picked up by the pointer (it still draws, its links open, the eraser reaches it). */
   shapeLocked: ((shape: ShapeRecord) => boolean) | null
   /** Host hook: how a followed link opens (default `openUrl`, a new tab). */
@@ -483,8 +487,8 @@ export class Editor {
 
   // clipboard / images
   copySelection(): Promise<void>
-  /** Programmatic paste: images, tldraw's clipboard HTML, our own payload, or plain text (as a text shape). ⌘V uses the browser's paste event instead. */
-  pasteFromClipboard(): Promise<void>
+  /** Programmatic paste: images, tldraw's clipboard HTML, our own payload, or plain text (as a text shape). ⌘V uses the browser's paste event instead. Resolves with what happened. */
+  pasteFromClipboard(): Promise<{ what: 'image' | 'html' | 'text' | 'nothing' | 'error'; types: string[]; error?: unknown }>
   /**
    * Put tldraw content (see `parseTldrawClipboard`) on the board: converted
    * to our shapes, centred in the view (or at `at`), selected. Remote image

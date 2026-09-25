@@ -1982,6 +1982,34 @@ describe('formatting while editing', () => {
 })
 
 describe('links', () => {
+  it('the hand follows a link on a still tap, and a finger gets more slop before a press becomes a drag', () => {
+    editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'go', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1, marks: [{ from: 0, to: 2, href: 'https://example.org/hand' }] } })
+    const opened = []
+    editor.openLink = (href) => opened.push(href)
+    editor.setTool('hand')
+    const p = editor.pageToScreen(4, 4)
+    editor._pointerDown({ ...ev(p.x, p.y, { pointerType: 'touch' }), target: editor.canvas })
+    editor._pointerUp({ ...ev(p.x + 5, p.y + 3, { pointerType: 'touch' }), target: editor.canvas })
+    expect(opened).toEqual(['https://example.org/hand'])
+    // a real drag on the hand is a pan, not a tap
+    editor._pointerDown({ ...ev(p.x, p.y, { pointerType: 'touch' }), target: editor.canvas })
+    editor._pointerMove({ ...ev(p.x + 60, p.y, { pointerType: 'touch' }), target: editor.canvas })
+    editor._pointerUp({ ...ev(p.x + 60, p.y, { pointerType: 'touch' }), target: editor.canvas })
+    expect(opened.length).toBe(1)
+    // on the pointer tool a finger may wobble 8px and still be a click on the link
+    editor.setTool('select')
+    editor.setCamera({ x: 0, y: 0, z: 1 })
+    editor._pointerDown({ ...ev(4, 4, { pointerType: 'touch' }), target: editor.canvas })
+    editor._pointerMove({ ...ev(10, 8, { pointerType: 'touch' }), target: editor.canvas })
+    editor._pointerUp({ ...ev(10, 8, { pointerType: 'touch' }), target: editor.canvas })
+    expect(opened.length).toBe(2)
+    expect(editor.store.get('t').x).toBe(0)
+    editor.openLink = null
+  })
+  it('pasteFromClipboard says what happened', async () => {
+    const r = await editor.pasteFromClipboard()
+    expect(['error', 'nothing', 'text']).toContain(r.what)
+  })
   it('a host may route followed links itself', () => {
     editor.store.put({ id: 't', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'go', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1, marks: [{ from: 0, to: 2, href: 'https://example.org/x' }] } })
     const opened = []
