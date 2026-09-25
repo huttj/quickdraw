@@ -41,6 +41,12 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Export and copy, the same everywhere.** Both menus offer "Export ▸" and
+  "Copy as ▸" with PNG, transparent PNG and SVG; they act on the selection
+  when there is one, else on the whole board. Copying as SVG puts the
+  markup on the clipboard as text.
+- **Crop marks.** Crop mode shows brackets at the corners and ticks on the
+  sides of the window, in place of resize handles.
 - **Snapping.** A moving box settles its edges and centre lines onto the
   edges and centre lines of everything else within a few screen pixels, and
   a pulled edge does the same; a faint guide shows the line it settled on.

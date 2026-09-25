@@ -652,7 +652,7 @@ describe('createQuickdraw UI', () => {
 
     // grid is a nested dropdown: the row shows the current value…
     expect(board.editor.grid).toBe('lines')
-    const gridRow = c2.querySelector('.qd-has-sub')
+    const gridRow = [...c2.querySelectorAll('.qd-has-sub')].find((r) => r.textContent.trim().startsWith('Grid'))
     expect(gridRow.textContent).toContain('Grid')
     expect(gridRow.textContent).toContain('Lines')
     expect(gridRow.classList.contains('sub-open')).toBe(false)
