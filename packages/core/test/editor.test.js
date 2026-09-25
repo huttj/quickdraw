@@ -2080,6 +2080,29 @@ describe('snapping', () => {
   })
 })
 
+describe('per-tool styles', () => {
+  it('each tool keeps its own styles; the highlighter starts fat and yellow', () => {
+    editor.setTool('draw')
+    editor.setStyle('color', 'black')
+    editor.setStyle('dash', 'dotted')
+    editor.setTool('highlight')
+    expect(editor.styles.color).toBe('yellow')
+    expect(editor.styles.size).toBe('l')
+    editor.setStyle('size', 'xl')
+    editor.setTool('text')
+    expect(editor.styles.color).toBe('black') // the text tool had not been touched: it carries on from where we were
+    editor.setStyle('font', 'serif')
+    editor.setTool('draw')
+    expect(editor.styles.color).toBe('black')
+    expect(editor.styles.dash).toBe('dotted')
+    expect(editor.styles.font).toBe('draw')
+    editor.setTool('highlight')
+    expect(editor.styles.size).toBe('xl')
+    editor.setTool('text')
+    expect(editor.styles.font).toBe('serif')
+  })
+})
+
 describe('marks on a selection', () => {
   it('⌘B on selected texts bolds all of their text; again unbolds; nothing without text', () => {
     editor.store.put({ id: 'a', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'hello', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
