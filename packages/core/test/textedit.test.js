@@ -18,6 +18,21 @@ describe('TextSurface', () => {
     t.remove()
   })
 
+  it('typing at the end of a bold run stays bold, even when the browser lands the characters outside the span', () => {
+    const t = mount()
+    t.render('hello', [{ from: 0, to: 5, b: true }], [5, 5])
+    // the browser appends the typed text as a plain node after the span
+    t.el.insertBefore(document.createTextNode(' world'), t.el.lastChild)
+    t.el.dispatchEvent(new Event('input'))
+    expect(t.value).toBe('hello world')
+    expect(t.marks).toEqual([{ from: 0, to: 11, b: true }])
+    // typing at the start of the run does not: it stays plain
+    t.el.insertBefore(document.createTextNode('>> '), t.el.firstChild)
+    t.el.dispatchEvent(new Event('input'))
+    expect(t.marks).toEqual([{ from: 3, to: 14, b: true }])
+    t.remove()
+  })
+
   it("normalizes whatever the browser puts in: divs and brs become newlines, b/i/a tags become marks", () => {
     const t = mount()
     t.el.innerHTML = 'one<div>two <b>bold</b></div><br>three <a href="https://q">q</a><br>'

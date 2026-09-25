@@ -41,6 +41,9 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **Typing carries the style before it.** Bold a box and keep typing: the
+  new text is bold too, as it is in every editor. (A styled run's span also
+  carried its old offsets, which could misplace the run after an edit.)
 - **Each tool keeps its own styles.** Switch to the highlighter and it comes
   back fat and yellow; switch to the pen and its black dotted line is
   waiting; the text tool has its own font. A tool you have not touched yet
