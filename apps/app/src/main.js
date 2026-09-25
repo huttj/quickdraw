@@ -1,4 +1,4 @@
-import { createQuickdraw } from '@quickdrawjs/core'
+import { createQuickdraw, lockPage } from '@quickdrawjs/core'
 import '@quickdrawjs/core/quickdraw.css'
 import '@quickdrawjs/core/fonts.css'
 
@@ -18,6 +18,40 @@ const board = createQuickdraw({
 
 const { editor } = board
 const { store } = editor
+
+// the page stays put: the board does the zooming and the scrolling
+lockPage()
+
+// ---- deep links -------------------------------------------------------------
+// #i=id,id frames those shapes; #v=x,y,z is a camera (the address bar keeps
+// the camera as you move, so the URL is always a link to what you see).
+const VIEW_RE = /^#v=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/
+const ITEMS_RE = /^#i=([A-Za-z0-9:_,%-]{1,4000})$/
+function applyHash({ animate = 0 } = {}) {
+  const hash = window.location.hash
+  const v = VIEW_RE.exec(hash)
+  if (v) {
+    const [x, y, z] = [Number(v[1]), Number(v[2]), Number(v[3])]
+    const { w, h } = editor.viewSize()
+    if (z > 0) editor.setCamera({ x: w / (2 * z) - x, y: h / (2 * z) - y, z }, { animate })
+    return true
+  }
+  const i = ITEMS_RE.exec(hash)
+  if (i) return editor.frameShapes(i[1].split(',').map(decodeURIComponent), { animate })
+  return false
+}
+window.addEventListener('hashchange', () => applyHash({ animate: 260 }))
+let hashTimer = 0
+editor.on('camera', () => {
+  if (hashTimer) return
+  hashTimer = setTimeout(() => {
+    hashTimer = 0
+    const { w, h } = editor.viewSize()
+    const c = editor.screenToPage(w / 2, h / 2)
+    const next = `#v=${c.x.toFixed(1)},${c.y.toFixed(1)},${editor.camera.z.toFixed(3)}`
+    if (window.location.hash !== next) history.replaceState(null, '', next)
+  }, 250)
+})
 
 // ---- file index -------------------------------------------------------------
 // { current: id, files: [{ id, name, updatedAt }] } in localStorage; each
@@ -87,7 +121,7 @@ function openFile(id, { fit = true } = {}) {
   // A fresh file starts with a fresh history — undo shouldn't cross files.
   store.undos.length = 0
   store.redos.length = 0
-  if (fit && snap) editor.fitContent()
+  if (fit && snap && !applyHash()) editor.fitContent()
   nameInput.value = file.name
 }
 

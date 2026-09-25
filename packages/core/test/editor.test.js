@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Editor, TOOLS } from '../src/editor.js'
 import { createQuickdraw } from '../src/index.js'
-import { pageBounds, textLayout, lineRuns, localBounds } from '../src/shapes.js'
+import { pageBounds, textLayout, lineRuns, localBounds, hasMark } from '../src/shapes.js'
 
 // Fake pointer events fed straight to the editor's handlers. The container
 // sits at (0,0) in jsdom, so clientX/Y are screen coords directly.
@@ -1920,12 +1920,12 @@ describe('formatting while editing', () => {
     ta.dispatchEvent(new Event('keyup'))
     type(ta, 'X')
     expect(editor.store.get('t').props.marks).toEqual([{ from: 12, to: 14, i: true }])
-    // strike and highlight take shift; code is ⌘E
+    // strike takes shift (code and highlight are no longer shortcuts)
     ta.setSelectionRange(1, 6)
     key(ta, 'x', { shiftKey: true })
     key(ta, 'h', { shiftKey: true })
     key(ta, 'e')
-    expect(editor.store.get('t').props.marks[0]).toEqual({ from: 1, to: 6, s: true, hl: true, code: true })
+    expect(editor.store.get('t').props.marks[0]).toEqual({ from: 1, to: 6, s: true })
     editor._commitText()
     expect(editor.store.get('t').props.text).toBe('Xhello world!?')
   })
@@ -2077,6 +2077,52 @@ describe('snapping', () => {
     expect(editor.session.snapGuides?.[0].at).toBe(100)
     editor._pointerUp({ ...ev(104, 320), target: editor.canvas })
     expect(editor.store.get('b').x).toBe(100)
+  })
+})
+
+describe('marks on a selection', () => {
+  it('⌘B on selected texts bolds all of their text; again unbolds; nothing without text', () => {
+    editor.store.put({ id: 'a', typeName: 'shape', type: 'text', x: 0, y: 0, rot: 0, z: 1, props: { text: 'hello', color: 'black', size: 'm', font: 'draw', autosize: true, scale: 1 } })
+    editor.store.put({ id: 'n', typeName: 'shape', type: 'note', x: 300, y: 0, rot: 0, z: 2, props: { text: 'note', color: 'yellow', size: 'm', font: 'draw', scale: 1, marks: [{ from: 0, to: 2, b: true }] } })
+    editor.store.put({ id: 'g', typeName: 'shape', type: 'geo', x: 600, y: 0, rot: 0, z: 3, props: { geo: 'rectangle', w: 80, h: 60, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw' } })
+    editor.setTool('select')
+    editor.setSelection(['a', 'n', 'g'])
+    const press = (key, over = {}) => editor._keyDown({ key, metaKey: true, ...over, preventDefault() {}, stopPropagation() {}, target: editor.container })
+    const hasMarkAll = (id, key) => { const s = editor.store.get(id); return hasMark(s.props.marks, 0, s.props.text.length, key) }
+    press('b')
+    expect(hasMarkAll('a', 'b')).toBe(true)
+    expect(hasMarkAll('n', 'b')).toBe(true) // the half-bold note is now all bold
+    press('b')
+    expect(editor.store.get('a').props.marks).toBeUndefined()
+    expect(editor.store.get('n').props.marks).toBeUndefined()
+    press('x', { shiftKey: true })
+    expect(hasMarkAll('a', 's')).toBe(true)
+    editor.setSelection(['g'])
+    expect(editor.toggleMarkOnSelection('b')).toBe(false)
+  })
+})
+
+describe('framing and remote cursors', () => {
+  it('frameShapes fits the shapes in the free space, selects them on the pointer, not on the hand', () => {
+    editor.store.put({ id: 'a', typeName: 'shape', type: 'geo', x: 1000, y: 1000, rot: 0, z: 1, props: { geo: 'rectangle', w: 100, h: 100, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw' } })
+    editor.setTool('select')
+    expect(editor.frameShapes(['nope'])).toBe(false)
+    expect(editor.frameShapes(['a'])).toBe(true)
+    expect(editor.selection.has('a')).toBe(true)
+    const { w, h } = editor.viewSize()
+    const c = editor.pageToScreen(1050, 1050)
+    expect(c.x).toBeCloseTo(w / 2, 0)
+    expect(c.y).toBeCloseTo(h / 2, 0)
+    editor.setTool('hand')
+    editor.setSelection([])
+    editor.frameShapes(['a'], { inset: { left: 200 } })
+    expect(editor.selection.size).toBe(0)
+    expect(editor.pageToScreen(1050, 1050).x).toBeCloseTo(200 + (w - 200) / 2, 0)
+  })
+  it('remote cursors draw on the overlay without complaint', () => {
+    editor.setRemoteCursors([{ id: 'p', x: 10, y: 10, color: '#f04f88', label: 'Pat' }])
+    expect(() => editor.render()).not.toThrow()
+    editor.setRemoteCursors([])
   })
 })
 

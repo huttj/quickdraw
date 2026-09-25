@@ -41,6 +41,19 @@ versioned in lockstep.
   text; ⌘Z inside it steps through the edit. `editor.toggleMark`,
   `setLink`, `editingStyle` for custom UIs; `editor.editing.textarea` keeps
   a textarea's API (value, selection, setSelectionRange) over the surface.
+- **⌘B on a selection.** With texts selected (not editing), ⌘B / ⌘I / ⌘U /
+  ⇧⌘X style all of their text; pressing again takes it off.
+- **Fewer marks.** Code and highlight are gone from the formatting bar and
+  its shortcuts; the highlighter tool covers that. Documents that carry
+  such runs still draw them.
+- **`lockPage()`.** A helper for the page around a board: no pinch or
+  double-tap zooming the page, an unscrollable document, the scroll pinned
+  to the top. The hosted app uses it.
+- **`editor.frameShapes(ids, { inset })`** frames some shapes in the space a
+  host's chrome leaves free; the hosted app follows `#i=id,id` and `#v=x,y,z`
+  links and keeps the camera in the address bar.
+- **`editor.setRemoteCursors(list)`** draws other people's pointers on the
+  overlay in page space, so they ride the camera exactly.
 - **Host hooks for what shows.** `editor.shapeFilter` decides per shape
   whether it is on the board at all (a filtered shape is not drawn, hit,
   selected, fitted or exported) and `editor.shapeAlpha` how opaque it draws.
