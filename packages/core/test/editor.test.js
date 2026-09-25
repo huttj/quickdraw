@@ -2090,7 +2090,7 @@ describe('per-tool styles', () => {
     expect(editor.styles.size).toBe('l')
     editor.setStyle('size', 'xl')
     editor.setTool('text')
-    expect(editor.styles.color).toBe('black') // the text tool had not been touched: it carries on from where we were
+    expect(editor.styles.color).toBe('blue') // untouched: the board's own default, not the highlighter's yellow
     editor.setStyle('font', 'serif')
     editor.setTool('draw')
     expect(editor.styles.color).toBe('black')

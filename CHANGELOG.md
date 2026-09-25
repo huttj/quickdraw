@@ -44,7 +44,7 @@ versioned in lockstep.
 - **Each tool keeps its own styles.** Switch to the highlighter and it comes
   back fat and yellow; switch to the pen and its black dotted line is
   waiting; the text tool has its own font. A tool you have not touched yet
-  carries on from the styles you were using.
+  starts from the board's defaults.
 - **⌘B on a selection.** With texts selected (not editing), ⌘B / ⌘I / ⌘U /
   ⇧⌘X style all of their text; pressing again takes it off.
 - **Fewer marks.** Code and highlight are gone from the formatting bar and
