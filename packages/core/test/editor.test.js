@@ -256,6 +256,32 @@ describe('selection & transforms', () => {
     expect([...editor.selection]).toEqual([a.id])
   })
 
+  it('a resize stays one undo step even when its batch is closed part way, and ⌘Z waits for the button to come up', () => {
+    editor.store.put({ id: 'r', typeName: 'shape', type: 'geo', x: 100, y: 100, rot: 0, z: 1, props: { geo: 'rectangle', w: 100, h: 100, color: 'black', size: 'm', dash: 'solid', fill: 'none', font: 'draw' } })
+    editor.setTool('select')
+    editor.setSelection(['r'])
+    const n0 = editor.store.undos.length
+    editor._pointerDown({ ...ev(200, 200), target: editor.canvas })
+    editor._pointerMove({ ...ev(210, 210), target: editor.canvas })
+    editor._pointerMove({ ...ev(220, 220), target: editor.canvas })
+    // ⌘Z mid-drag: ignored, the drag goes on
+    editor._keyDown({ key: 'z', metaKey: true, shiftKey: false, ctrlKey: false, altKey: false, preventDefault() {} })
+    expect(editor.store.get('r').props.w).toBe(120)
+    editor._pointerMove({ ...ev(230, 230), target: editor.canvas })
+    // something else closes the batch (a document reload on reconnect would)
+    editor.store.endBatch()
+    editor._pointerMove({ ...ev(240, 240), target: editor.canvas })
+    editor._pointerMove({ ...ev(250, 250), target: editor.canvas })
+    editor._pointerUp({ ...ev(250, 250), target: editor.canvas })
+    expect(editor.store.get('r').props.w).toBe(150)
+    // two steps at most: before the break and after it — never one per move
+    expect(editor.store.undos.length - n0).toBe(2)
+    editor.store.undo()
+    expect(editor.store.get('r').props.w).toBe(130)
+    editor.store.undo()
+    expect(editor.store.get('r').props.w).toBe(100)
+  })
+
   it('dragging a selected shape translates it (one undo step)', () => {
     const a = makeRect(10, 10)
     editor.setSelection([a.id])
