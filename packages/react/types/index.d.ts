@@ -1,7 +1,6 @@
 import * as React from 'react'
 import type {
-  Camera, Diff, DiffSource, Editor, BoardUI, GridId, Snapshot, Store, Styles, ThemeId,,
-  SnapSettings,
+  Camera, Diff, DiffSource, Editor, BoardUI, GridId, SnapSettings, Snapshot, Store, Styles, ThemeId,
 } from '@quickdrawjs/core'
 
 export * from '@quickdrawjs/core'
