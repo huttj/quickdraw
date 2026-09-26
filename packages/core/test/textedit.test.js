@@ -33,6 +33,22 @@ describe('TextSurface', () => {
     t.remove()
   })
 
+  it('typing over a selected bold run leaves only the typed text bold: the run does not keep its old length', () => {
+    const t = mount()
+    t.render('Investigating a heading\n\nI tend to agree', [{ from: 0, to: 23, b: true }], [0, 23])
+    // the browser replaces the span's text with the typed character
+    const span = t.el.querySelector('span')
+    span.textContent = 'I'
+    t.el.dispatchEvent(new Event('input'))
+    expect(t.value).toBe('I\n\nI tend to agree')
+    expect(t.marks).toEqual([{ from: 0, to: 1, b: true }])
+    // more typing inside the run grows it by exactly what was typed
+    t.el.querySelector('span').textContent = 'Inv'
+    t.el.dispatchEvent(new Event('input'))
+    expect(t.marks).toEqual([{ from: 0, to: 3, b: true }])
+    t.remove()
+  })
+
   it("normalizes whatever the browser puts in: divs and brs become newlines, b/i/a tags become marks", () => {
     const t = mount()
     t.el.innerHTML = 'one<div>two <b>bold</b></div><br>three <a href="https://q">q</a><br>'
