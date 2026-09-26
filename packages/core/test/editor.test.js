@@ -105,6 +105,21 @@ describe('drawing', () => {
     expect(editor.store.shapes().length).toBe(0)
   })
 
+  it('a bare click with the highlighter leaves nothing behind, not even an undo step', () => {
+    editor.setTool('highlight')
+    drag(editor, [[10, 10]])
+    expect(editor.store.shapes().length).toBe(0)
+    expect(editor.store.undos.length).toBe(0)
+    // a click with the pen is a dot of ink, and stays
+    editor.setTool('draw')
+    drag(editor, [[10, 10]])
+    expect(editor.store.shapes().length).toBe(1)
+    // a real highlight stroke stays too
+    editor.setTool('highlight')
+    drag(editor, [[10, 10], [60, 10]])
+    expect(editor.store.shapes().filter((s) => s.type === 'highlight').length).toBe(1)
+  })
+
   it('highlights keep their place in the z order (the multiply blend does the marker look)', () => {
     editor.setTool('draw')
     drag(editor, [[10, 10], [60, 60]])
