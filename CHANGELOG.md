@@ -7,9 +7,10 @@ versioned in lockstep.
 ## Unreleased
 
 - **Gap snapping.** A dragged box settles into even spacing the way a layout
-  tool does: the same gap as the two boxes next door, or the exact middle of
-  two it fits between, with a measure and the distance drawn across each
-  equal gap. A pulled edge settles to leave a gap equal to one nearby. Two
+  tool does: a spacing the board already uses between two neighbours (a
+  column picks up a row's spacing as readily as its own, the nearest pair
+  winning), or the exact middle of two it fits between, with a measure and
+  the distance drawn across each equal gap. A pulled edge settles to leave a gap equal to one nearby. Two
   rows in the board menu, "Snap to edges" and "Snap to gaps", turn either
   kind off (`editor.snap`, `setSnap`, the `snap` event; `snap` and
   `onSnapChange` on `<Quickdraw />`). ⌘ while dragging still turns all

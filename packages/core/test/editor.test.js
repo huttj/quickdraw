@@ -2138,6 +2138,21 @@ describe('snapping', () => {
     expect(editor.store.get('c').y).toBe(105)
     editor.setSnap({ edges: true })
   })
+  it('a column picks up the spacing of a row', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put(box('b', 250, 100, 60, 50)) // 50 to the right of a
+    editor.store.put(box('c', 100, 300, 100, 40))
+    editor.setTool('select')
+    editor.setSelection(['c'])
+    // c dragged up under a to y 205: 5 past 50-below-a (200); the only spacing around is the row's
+    editor._pointerDown({ ...ev(150, 320), target: editor.canvas })
+    editor._pointerMove({ ...ev(150, 225), target: editor.canvas })
+    const g = editor.session.snapGuides.find((x) => x.axis === 'gy')
+    expect(g).toBeTruthy()
+    expect(g.spans.map((sp) => sp.axis + Math.round(sp.to - sp.from))).toEqual(['x50', 'y50'])
+    editor._pointerUp({ ...ev(150, 225), target: editor.canvas })
+    expect(editor.store.get('c').y).toBe(200)
+  })
   it('a pulled edge settles to leave a gap equal to one nearby', () => {
     editor.store.put(box('a', 100, 100, 100, 50))
     editor.store.put(box('b', 250, 100, 60, 50)) // 50 after a
