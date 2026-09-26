@@ -2099,6 +2099,60 @@ describe('snapping', () => {
     expect(editor.store.get('img').props.h).toBeCloseTo(50)
     expect(editor.store.get('img').props.w).toBeCloseTo(75)
   })
+  it('a moved box settles into even spacing: the gap next door, or the middle of two', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put(box('b', 250, 100, 60, 50)) // 50 after a
+    editor.store.put(box('c', 600, 100, 60, 50))
+    editor.setTool('select')
+    editor.setSelection(['c'])
+    // c dragged to x 365: 5 past the spot 50 after b (360)
+    editor._pointerDown({ ...ev(630, 120), target: editor.canvas })
+    editor._pointerMove({ ...ev(395, 120), target: editor.canvas })
+    const g = editor.session.snapGuides.find((x) => x.axis === 'gx')
+    expect(g).toBeTruthy()
+    expect(g.spans.map((sp) => Math.round(sp.to - sp.from))).toEqual([50, 50])
+    editor._pointerUp({ ...ev(395, 120), target: editor.canvas })
+    expect(editor.store.get('c').x).toBe(360)
+    // and between two: a (ends 200) and d (starts 400): c centred leaves 70 each side
+    editor.store.put(box('d', 400, 100, 100, 50))
+    editor.store.remove(['b'])
+    editor._pointerDown({ ...ev(370, 120), target: editor.canvas }) // well inside c, clear of d's outline
+    editor._pointerMove({ ...ev(283, 120), target: editor.canvas }) // c.x 273, 3 off 270
+    expect(editor.session.snapGuides.find((x) => x.axis === 'gx')?.spans.map((sp) => Math.round(sp.to - sp.from))).toEqual([70, 70])
+    editor._pointerUp({ ...ev(283, 120), target: editor.canvas })
+    expect(editor.store.get('c').x).toBe(270)
+    // switched off in the menu: no settling into gaps (edges still do)
+    editor.setSnap({ gaps: false })
+    editor._pointerDown({ ...ev(300, 120), target: editor.canvas })
+    editor._pointerMove({ ...ev(290, 120), target: editor.canvas }) // c.x 260: 10 off centred, well within a drag
+    editor._pointerMove({ ...ev(297, 120), target: editor.canvas }) // c.x 267: 3 off centred, but gaps are off
+    expect((editor.session.snapGuides ?? []).some((x) => x.axis === 'gx')).toBe(false)
+    editor._pointerUp({ ...ev(297, 120), target: editor.canvas })
+    expect(editor.store.get('c').x).toBe(267)
+    editor.setSnap({ gaps: true, edges: false })
+    editor._pointerDown({ ...ev(300, 120), target: editor.canvas })
+    editor._pointerMove({ ...ev(310, 130), target: editor.canvas })
+    editor._pointerMove({ ...ev(303, 125), target: editor.canvas }) // top 105: 5 off a's top, but edges are off
+    expect((editor.session.snapGuides ?? []).some((x) => x.axis === 'y')).toBe(false)
+    editor._pointerUp({ ...ev(303, 125), target: editor.canvas })
+    expect(editor.store.get('c').y).toBe(105)
+    editor.setSnap({ edges: true })
+  })
+  it('a pulled edge settles to leave a gap equal to one nearby', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put(box('b', 250, 100, 60, 50)) // 50 after a
+    editor.store.put(box('c', 500, 100, 60, 50))
+    editor.setTool('select')
+    editor.setSelection(['c'])
+    // c's left edge pulled to 365: 5 past 50-after-b
+    editor._pointerDown({ ...ev(500, 120), target: editor.canvas })
+    editor._pointerMove({ ...ev(365, 120), target: editor.canvas })
+    expect(editor.session.type).toBe('resizing')
+    expect(editor.session.snapGuides?.[0].axis).toBe('gx')
+    editor._pointerUp({ ...ev(365, 120), target: editor.canvas })
+    expect(editor.store.get('c').x).toBe(360)
+    expect(editor.store.get('c').props.w).toBe(200)
+  })
   it('a pulled edge settles onto another edge', () => {
     editor.store.put(box('a', 100, 100, 100, 50))
     editor.store.put(box('b', 300, 300, 60, 40))

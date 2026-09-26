@@ -6,6 +6,19 @@ versioned in lockstep.
 
 ## Unreleased
 
+- **Gap snapping.** A dragged box settles into even spacing the way a layout
+  tool does: the same gap as the two boxes next door, or the exact middle of
+  two it fits between, with a measure and the distance drawn across each
+  equal gap. A pulled edge settles to leave a gap equal to one nearby. Two
+  rows in the board menu, "Snap to edges" and "Snap to gaps", turn either
+  kind off (`editor.snap`, `setSnap`, the `snap` event; `snap` and
+  `onSnapChange` on `<Quickdraw />`). ⌘ while dragging still turns all
+  snapping off for the moment.
+- **`shapeFade` host hook.** How much of its colour a shape keeps on screen
+  (1 full, 0 a warm sepia grey). Drawn through a scratch canvas, so a fading
+  photo and a fading stroke lose their colour the same way, rather than
+  turning transparent.
+
 - **Snapping while resizing matches sizes too.** A pulled edge still settles
   onto neighbours' edges and centre lines; now it also settles onto a
   matching width or height, so a box pulled to the height of the one beside
