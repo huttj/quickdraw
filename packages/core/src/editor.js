@@ -1854,8 +1854,10 @@ export class Editor {
   // the overlay draws the line it settled on. ⌘ (or ctrl on Windows) held
   // while dragging turns it off.
   // Only what is on screen (a little past its edges) offers lines to settle on.
+  // A resize also settles onto matching sizes: pull a box to the height of
+  // the one beside it and it lands exactly there (ws/hs).
   _snapCandidates(excludeIds) {
-    const xs = [], ys = []
+    const xs = [], ys = [], ws = [], hs = []
     const vp = this.viewportPageBounds()
     const onScreen = vp.w > 1 && vp.h > 1 ? boundsExpand(vp, Math.max(vp.w, vp.h) * 0.25) : null
     for (const s of this.shapesSorted()) {
@@ -1864,8 +1866,10 @@ export class Editor {
       if (onScreen && (b.x + b.w < onScreen.x || b.x > onScreen.x + onScreen.w || b.y + b.h < onScreen.y || b.y > onScreen.y + onScreen.h)) continue
       xs.push({ at: b.x, b }, { at: b.x + b.w / 2, b }, { at: b.x + b.w, b })
       ys.push({ at: b.y, b }, { at: b.y + b.h / 2, b }, { at: b.y + b.h, b })
+      ws.push({ at: b.w, b })
+      hs.push({ at: b.h, b })
     }
-    return { xs, ys }
+    return { xs, ys, ws, hs }
   }
   // The candidate to settle on, within tol of any moving line: the nearest
   // thing wins, so a neighbour beats a far-off edge that happens to line up
@@ -1892,36 +1896,86 @@ export class Editor {
   // proportional on shift, and always for shapes that only scale as a whole
   // (images, notes, text). A side pull on a whole-scaling shape scales it as
   // a whole by that axis, so its far edge stays pinned instead of drifting;
-  // text takes a side pull as its wrap width (see scaleShape).
-  _resizeScales(handle, sx, sy, shapes, e) {
+  // text takes a side pull as its wrap width (see scaleShape). `lead` names
+  // the axis that snapped, so a proportional pull keeps that one exact and
+  // lets the other follow.
+  _resizeScales(handle, sx, sy, shapes, e, lead = null) {
     const corner = handle.length === 2
     const whole = shapes.every((sh) => ['image', 'text', 'note'].includes(sh.type))
-    if (corner && (e.shiftKey || whole)) { const s = Math.max(sx, sy); return [s, s] }
+    if (corner && (e.shiftKey || whole)) { const s = lead === 'y' ? sy : lead === 'x' ? sx : Math.max(sx, sy); return [s, s] }
     return [sx, sy]
+  }
+  _proportional(handle, shapes, e) {
+    return handle.length === 2 && (e.shiftKey || shapes.every((sh) => ['image', 'text', 'note'].includes(sh.type)))
   }
   // ⌥ (or ctrl) resizes about the centre instead of the far edge
   _fromCenter(e) { return !!(e.altKey || e.ctrlKey) }
+  // The pulled edge settles onto other shapes' edges and centre lines, or
+  // onto a size that matches a neighbour's (so a box pulled to the height
+  // of the one beside it lands exactly there). Returns the settled pointer,
+  // the guides to draw, and which axis led.
+  _snapResize(p, handle, init, center, orig) {
+    const tol = SNAP_PX / this.camera.z
+    const ss = this.session
+    const cands = ss.cands || (ss.cands = this._snapCandidates(new Set(orig.keys())))
+    const guides = []
+    let { x: px, y: py } = p
+    let dx = null, dy = null
+    const axis = (pulled, coord, ax, span, edges, sizes) => {
+      if (!pulled) return null
+      const edge = this._snapAxis([coord], edges, tol, init)
+      // the size this pull comes to, and the neighbour size it could match
+      const size = center ? Math.abs(coord - ax) * 2 : Math.abs(coord - ax)
+      const dim = this._snapAxis([size], sizes, tol, init)
+      if (edge && (!dim || edge.score <= dim.score)) return { at: edge.at, d: edge.d, guide: { edge } }
+      if (dim) {
+        const to = size + dim.d
+        const at = ax + Math.sign(coord - ax || 1) * (center ? to / 2 : to)
+        return { at, d: at - coord, guide: { dim, size: to } }
+      }
+      return null
+    }
+    const sx = axis(handle.includes('l') || handle.includes('r'), px, center ? init.x + init.w / 2 : handle.includes('l') ? init.x + init.w : init.x, init.w, cands.xs, cands.ws)
+    const sy = axis(handle.includes('t') || handle.includes('b'), py, center ? init.y + init.h / 2 : handle.includes('t') ? init.y + init.h : init.y, init.h, cands.ys, cands.hs)
+    // a proportional pull can only honour one axis: the one that settled closer
+    const proportional = this._proportional(handle, [...orig.values()], ss.event || {})
+    let lead = null
+    if (sx && sy) lead = Math.abs(sy.d) <= Math.abs(sx.d) ? 'y' : 'x'
+    else if (sx) lead = 'x'
+    else if (sy) lead = 'y'
+    const useX = sx && (!proportional || lead === 'x')
+    const useY = sy && (!proportional || lead === 'y')
+    if (useX) { px = sx.at; dx = sx.d }
+    if (useY) { py = sy.at; dy = sy.d }
+    // the box as it comes to be, for the guides
+    const box = (() => {
+      const w = handle.includes('l') || handle.includes('r') ? (center ? Math.abs(px - (init.x + init.w / 2)) * 2 : Math.abs(px - (handle.includes('l') ? init.x + init.w : init.x))) : init.w
+      const h = handle.includes('t') || handle.includes('b') ? (center ? Math.abs(py - (init.y + init.h / 2)) * 2 : Math.abs(py - (handle.includes('t') ? init.y + init.h : init.y))) : init.h
+      const x = handle.includes('l') ? (center ? init.x + init.w / 2 - w / 2 : init.x + init.w - w) : center && handle.includes('r') ? init.x + init.w / 2 - w / 2 : init.x
+      const y = handle.includes('t') ? (center ? init.y + init.h / 2 - h / 2 : init.y + init.h - h) : center && handle.includes('b') ? init.y + init.h / 2 - h / 2 : init.y
+      return { x, y, w, h }
+    })()
+    if (useX) {
+      if (sx.guide.edge) guides.push({ axis: 'x', at: sx.at, from: Math.min(box.y, sx.guide.edge.b.y), to: Math.max(box.y + box.h, sx.guide.edge.b.y + sx.guide.edge.b.h) })
+      else guides.push({ axis: 'w', box, b: sx.guide.dim.b })
+    }
+    if (useY) {
+      if (sy.guide.edge) guides.push({ axis: 'y', at: sy.at, from: Math.min(box.x, sy.guide.edge.b.x), to: Math.max(box.x + box.w, sy.guide.edge.b.x + sy.guide.edge.b.w) })
+      else guides.push({ axis: 'h', box, b: sy.guide.dim.b })
+    }
+    return { p: { x: px, y: py }, guides, lead: useX && useY ? lead : useX ? 'x' : useY ? 'y' : null }
+  }
   _dragResize(p, e) {
     const ss = this.session
     if (ss.rotated) return this._dragResizeRotated(p, e)
     const { handle, init } = ss
     const center = this._fromCenter(e)
-    // the pulled edges settle onto other shapes' edges and centre lines
     ss.snapGuides = null
+    ss.event = e
+    let lead = null
     if (!e.metaKey) {
-      const tol = SNAP_PX / this.camera.z
-      const cands = ss.cands || (ss.cands = this._snapCandidates(new Set(ss.orig.keys())))
-      const guides = []
-      let { x: px, y: py } = p
-      if (handle.includes('l') || handle.includes('r')) {
-        const s = this._snapAxis([px], cands.xs, tol, init)
-        if (s) { px = s.at; guides.push({ axis: 'x', at: s.at, from: Math.min(init.y, s.b.y), to: Math.max(init.y + init.h, s.b.y + s.b.h) }) }
-      }
-      if (handle.includes('t') || handle.includes('b')) {
-        const s = this._snapAxis([py], cands.ys, tol, init)
-        if (s) { py = s.at; guides.push({ axis: 'y', at: s.at, from: Math.min(init.x, s.b.x), to: Math.max(init.x + init.w, s.b.x + s.b.w) }) }
-      }
-      if (guides.length) { ss.snapGuides = guides; p = { x: px, y: py } }
+      const snapped = this._snapResize(p, handle, init, center, ss.orig)
+      if (snapped.guides.length) { ss.snapGuides = snapped.guides; p = snapped.p; lead = snapped.lead }
     }
     const ax = center ? init.x + init.w / 2 : handle.includes('l') ? init.x + init.w : init.x // anchor
     const ay = center ? init.y + init.h / 2 : handle.includes('t') ? init.y + init.h : init.y
@@ -1934,7 +1988,7 @@ export class Editor {
       : 1
     sx = isFinite(sx) ? Math.max(0.02, sx) : 1
     sy = isFinite(sy) ? Math.max(0.02, sy) : 1
-    ;[sx, sy] = this._resizeScales(handle, sx, sy, [...ss.orig.values()], e)
+    ;[sx, sy] = this._resizeScales(handle, sx, sy, [...ss.orig.values()], e, lead)
     this.store.transact(() => {
       for (const [id, orig] of ss.orig) {
         if (!this.store.has(id)) continue
@@ -3100,6 +3154,22 @@ export class Editor {
       ctx.setLineDash([])
       const pad = 24 / cam.z
       for (const g of guides) {
+        if (g.axis === 'w' || g.axis === 'h') {
+          // a matched size: a measure with end ticks beside each of the two boxes
+          for (const r of [g.box, g.b]) {
+            const off = 10 / cam.z, tick = 4
+            if (g.axis === 'h') {
+              const a = this.pageToScreen(r.x + r.w + off, r.y), b = this.pageToScreen(r.x + r.w + off, r.y + r.h)
+              const x = Math.round(a.x) + 0.5
+              ctx.beginPath(); ctx.moveTo(x, a.y); ctx.lineTo(x, b.y); ctx.moveTo(x - tick, a.y); ctx.lineTo(x + tick, a.y); ctx.moveTo(x - tick, b.y); ctx.lineTo(x + tick, b.y); ctx.stroke()
+            } else {
+              const a = this.pageToScreen(r.x, r.y + r.h + off), b = this.pageToScreen(r.x + r.w, r.y + r.h + off)
+              const y = Math.round(a.y) + 0.5
+              ctx.beginPath(); ctx.moveTo(a.x, y); ctx.lineTo(b.x, y); ctx.moveTo(a.x, y - tick); ctx.lineTo(a.x, y + tick); ctx.moveTo(b.x, y - tick); ctx.lineTo(b.x, y + tick); ctx.stroke()
+            }
+          }
+          continue
+        }
         const a = g.axis === 'x' ? this.pageToScreen(g.at, g.from - pad) : this.pageToScreen(g.from - pad, g.at)
         const b = g.axis === 'x' ? this.pageToScreen(g.at, g.to + pad) : this.pageToScreen(g.to + pad, g.at)
         ctx.beginPath()

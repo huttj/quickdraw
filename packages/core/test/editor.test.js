@@ -2066,6 +2066,39 @@ describe('snapping', () => {
     editor._pointerUp({ ...ev(134, 320), target: editor.canvas })
     delete editor.viewportPageBounds
   })
+  it('a pulled edge settles onto a matching size, with a measure beside both boxes', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put(box('b', 300, 300, 60, 40))
+    editor.setTool('select')
+    editor.setSelection(['b'])
+    // pull b's bottom to 347: nothing to line up with there, but 47 is 3 shy of a's height
+    editor._pointerDown({ ...ev(330, 340), target: editor.canvas })
+    editor._pointerMove({ ...ev(330, 347), target: editor.canvas })
+    expect(editor.session.type).toBe('resizing')
+    expect(editor.session.snapGuides?.[0].axis).toBe('h')
+    editor._pointerUp({ ...ev(330, 347), target: editor.canvas })
+    expect(editor.store.get('b').props.h).toBe(50)
+    // and widths: b's right pulled to 397 (w 97) matches a's 100
+    editor._pointerDown({ ...ev(360, 320), target: editor.canvas })
+    editor._pointerMove({ ...ev(397, 320), target: editor.canvas })
+    expect(editor.session.snapGuides?.[0].axis).toBe('w')
+    editor._pointerUp({ ...ev(397, 320), target: editor.canvas })
+    expect(editor.store.get('b').props.w).toBe(100)
+  })
+  it('a proportional corner pull keeps the axis that settled exact', () => {
+    editor.store.put(box('a', 100, 100, 100, 50))
+    editor.store.put({ id: 'asset:1', typeName: 'asset', src: 'data:,', w: 60, h: 40 })
+    editor.store.put({ id: 'img', typeName: 'shape', type: 'image', x: 300, y: 300, rot: 0, z: 1, props: { w: 60, h: 40, assetId: 'asset:1' } })
+    editor.setTool('select')
+    editor.setSelection(['img'])
+    // images scale as a whole from a corner: the height matches a's 50, the width follows
+    editor._pointerDown({ ...ev(360, 340), target: editor.canvas })
+    editor._pointerMove({ ...ev(366, 347), target: editor.canvas })
+    expect(editor.session.snapGuides?.map((g) => g.axis)).toEqual(['h'])
+    editor._pointerUp({ ...ev(366, 347), target: editor.canvas })
+    expect(editor.store.get('img').props.h).toBeCloseTo(50)
+    expect(editor.store.get('img').props.w).toBeCloseTo(75)
+  })
   it('a pulled edge settles onto another edge', () => {
     editor.store.put(box('a', 100, 100, 100, 50))
     editor.store.put(box('b', 300, 300, 60, 40))

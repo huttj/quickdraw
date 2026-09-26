@@ -6,6 +6,13 @@ versioned in lockstep.
 
 ## Unreleased
 
+- **Snapping while resizing matches sizes too.** A pulled edge still settles
+  onto neighbours' edges and centre lines; now it also settles onto a
+  matching width or height, so a box pulled to the height of the one beside
+  it lands exactly there, with a measure drawn beside both. A proportional
+  pull (a corner of an image, note or text, or shift) keeps whichever axis
+  settled exact and lets the other follow, instead of losing the snap.
+
 - **Image cropping.** Double-click an image (or press Enter, or pick "Crop
   image" from the context menu) to enter crop mode: the whole picture shows
   faintly around the window, the handles trim it, and a drag inside slides
