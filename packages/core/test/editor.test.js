@@ -2044,6 +2044,12 @@ describe('snapping', () => {
     expect(editor.session.snapGuides).toBe(null)
     editor._pointerUp({ ...ev(234, 126, { metaKey: true }), target: editor.canvas })
     expect(editor.store.get('b').x).toBe(204)
+    // Ctrl does the same (and is what Windows has)
+    editor._pointerDown({ ...ev(230, 125), target: editor.canvas })
+    editor._pointerMove({ ...ev(234, 126, { ctrlKey: true }), target: editor.canvas })
+    expect(editor.session.snapGuides).toBe(null)
+    editor._pointerUp({ ...ev(234, 126, { ctrlKey: true }), target: editor.canvas })
+    expect(editor.store.get('b').x).toBe(208)
   })
   it('the nearer neighbour wins, and off-screen things offer nothing', () => {
     editor.store.put(box('near', 100, 100, 100, 50))
