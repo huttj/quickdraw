@@ -1094,8 +1094,10 @@ describe('image crop', () => {
 })
 
 describe('drop from the toolbar', () => {
-  it('dropShape lands a ready-made shape centred on the point, selected, in the current styles', () => {
+  it('dropShape lands a ready-made shape centred on the point, selected, in its own tool\'s styles', () => {
+    editor.setTool('geo')
     editor.setStyle('color', 'green')
+    editor.setTool('select')
     const id = editor.dropShape('geo', { x: 200, y: 200 })
     const s = editor.store.get(id)
     expect(s.type).toBe('geo')
@@ -1116,6 +1118,27 @@ describe('drop from the toolbar', () => {
     expect(editor.store.get(t).type).toBe('text')
     expect(editor.editing?.id).toBe(t)
     expect(editor.dropShape('nope', { x: 0, y: 0 })).toBe(null)
+  })
+
+  it('a drop takes its own tool\'s saved styles, not the tool in hand\'s', () => {
+    editor.setTool('text')
+    editor.setStyle('color', 'green')
+    editor.setTool('highlight') // fat and yellow
+    expect(editor.styles.color).toBe('yellow')
+    const t = editor.store.get(editor.dropShape('text', { x: 10, y: 10 }))
+    expect(t.props.color).toBe('green')
+    editor.setTool('highlight')
+    const r = editor.store.get(editor.dropShape('rectangle', { x: 10, y: 10 }))
+    expect(r.props.color).toBe('blue') // the shape tool, never touched: the board's default
+    expect(r.props.size).toBe('m')
+    editor.setTool('highlight')
+    const n = editor.store.get(editor.dropShape('note', { x: 10, y: 10 }))
+    expect(n.props.color).toBe('yellow') // a fresh note's own default, not the highlighter's
+    // and the tool in hand keeps its styles for next time
+    editor.setTool('highlight')
+    expect(editor.styles.color).toBe('yellow')
+    editor.setTool('text')
+    expect(editor.styles.color).toBe('green')
   })
 
   it('pulling the shape tool off the dock drops it on the board; a plain click still picks the tool', () => {
@@ -1812,9 +1835,11 @@ describe('tabs and fonts', () => {
     aligns[1].click()
     expect(ed.store.get('t').props.align).toBe('middle')
     expect(ed.currentStyles().align).toBe('middle')
-    // with nothing selected the pen takes it, and new text is born with it
+    // with nothing selected the text tool takes it, and new text is born with it
     ed.setSelection([])
+    ed.setTool('text')
     ed.setStyle('align', 'end')
+    ed.setTool('select')
     const id = ed.dropShape('text', { x: 50, y: 50 })
     expect(ed.store.get(id).props.align).toBe('end')
     board.destroy()
