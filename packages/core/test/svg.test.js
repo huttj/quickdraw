@@ -26,6 +26,7 @@ describe('sceneToSvg', () => {
       shape('geo', { geo: 'cloud', w: 100, h: 60, color: 'green', size: 'm', dash: 'dotted', fill: 'solid' }),
       shape('arrow', { dx: 120, dy: 40, bend: 20, color: 'black', size: 'l', dash: 'solid' }),
       shape('line', { dx: 120, dy: 40, bend: 0, color: 'black', size: 'm', dash: 'dashed' }),
+      shape('arrow', { dx: 120, dy: 0, bend: 0, headStart: 'dot', headEnd: 'triangle', color: 'black', size: 'm', dash: 'solid' }),
       shape('text', { text: 'one\ntwo', color: 'violet', size: 'm', font: 'mono', autosize: true, scale: 1, align: 'middle' }),
       shape('note', { text: 'sticky', color: 'yellow', size: 'm', font: 'draw', scale: 1.5 }),
       shape('image', { w: 100, h: 50, assetId: 'asset:a', crop: { x: 0.25, y: 0, w: 0.5, h: 1 } }),
@@ -57,7 +58,11 @@ describe('sceneToSvg', () => {
     expect(parseFloat(img.getAttribute('width'))).toBeCloseTo(200)
     // dashes and the arrow head
     expect(svg).toContain('stroke-dasharray')
-    expect(doc.querySelectorAll('g[data-shape="arrow"] path').length).toBe(2)
+    expect(doc.querySelector('g[data-shape="arrow"]').querySelectorAll('path').length).toBe(2)
+    // a dot head is a filled circle, a triangle a filled closed path
+    const two = doc.querySelectorAll('g[data-shape="arrow"]')[1]
+    expect(two.querySelectorAll('circle').length).toBe(1)
+    expect([...two.querySelectorAll('path')].some((p) => p.getAttribute('d').endsWith('Z') && p.getAttribute('fill') !== 'none')).toBe(true)
     expect(doc.querySelectorAll('g[data-shape="line"] path').length).toBe(1)
     // the note text is centred on the sticky: each line starts at (200 - its width) / 2
     const note = doc.querySelector('g[data-shape="note"]')

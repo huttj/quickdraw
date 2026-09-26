@@ -96,11 +96,12 @@ describe('tldraw clipboard', () => {
     expect(ar.props.endBind).toEqual({ id: 'shape:geo2', nx: 0.2, ny: 0.8 })
     expect(ar.props.bend).toBe(30)
     expect([ar.x, ar.y]).toEqual([180, 445])
-    // a head only at the start: turned round so the head is at our end
+    // a head only at the start keeps its place and its kind
     const ar2 = byId(shapes, 'arrow2')
     expect(ar2.type).toBe('arrow')
-    expect([ar2.x, ar2.y]).toEqual([500, 600])
-    expect(ar2.props.dx).toBe(-200)
+    expect([ar2.x, ar2.y]).toEqual([300, 600])
+    expect(ar2.props.dx).toBe(200)
+    expect([ar2.props.headStart, ar2.props.headEnd]).toEqual(['triangle', 'none'])
     expect(ar2.props.dash).toBe('dashed')
 
     // lines: two points stay a line, more become an even stroke

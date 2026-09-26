@@ -164,6 +164,58 @@ describe('geo / line / arrow', () => {
     expect(editor.store.shapes().length).toBe(1) // the tiny one is gone
   })
 
+  it('shift holds either end of a placed line to 15° while its handle is dragged', () => {
+    editor.store.put({ id: 'l', typeName: 'shape', type: 'line', x: 100, y: 100, rot: 0, z: 1, props: { dx: 100, dy: 0, bend: 0, color: 'black', size: 'm', dash: 'solid' } })
+    editor.setTool('select')
+    editor.setSelection(['l'])
+    // the end handle, dragged a little off level with shift down: stays level
+    drag(editor, [[200, 100], [260, 108]], { shiftKey: true })
+    let l = editor.store.get('l')
+    expect(l.props.dy).toBeCloseTo(0)
+    expect(l.props.dx).toBeCloseTo(Math.hypot(160, 8))
+    // the start handle likewise, pivoting on the end
+    const ex = l.x + l.props.dx, ey = l.y + l.props.dy
+    drag(editor, [[100, 100], [40, 106]], { shiftKey: true })
+    l = editor.store.get('l')
+    expect(l.props.dy).toBeCloseTo(0)
+    expect(l.x + l.props.dx).toBeCloseTo(ex)
+    expect(l.y + l.props.dy).toBeCloseTo(ey)
+    expect(l.x).toBeCloseTo(ex - Math.hypot(ex - 40, ey - 106))
+  })
+
+  it('heads make the shape: a line tool wearing a head draws arrows, and taking an arrow\'s heads off makes it a line', () => {
+    editor.setTool('line')
+    expect(editor.styles.headEnd).toBe('none')
+    drag(editor, [[10, 10], [110, 10]])
+    let s = editor.store.shapes()[0]
+    expect(s.type).toBe('line')
+    // the selection's implied heads show in the styles
+    editor.setSelection([s.id])
+    expect(editor.currentStyles().headEnd).toBe('none')
+    editor.setStyle('headEnd', 'triangle')
+    s = editor.store.get(s.id)
+    expect(s.type).toBe('arrow')
+    expect([s.props.headStart, s.props.headEnd]).toEqual(['none', 'triangle'])
+    editor.setStyle('headStart', 'dot')
+    editor.setStyle('headEnd', 'none')
+    expect(editor.store.get(s.id).type).toBe('arrow')
+    editor.setStyle('headStart', 'none')
+    expect(editor.store.get(s.id).type).toBe('line')
+    // an old arrow with no head props still reads as headed
+    editor.store.put({ id: 'old', typeName: 'shape', type: 'arrow', x: 0, y: 0, rot: 0, z: 2, props: { dx: 50, dy: 0, bend: 0, color: 'black', size: 'm', dash: 'solid' } })
+    editor.setSelection(['old'])
+    expect(editor.currentStyles().headEnd).toBe('arrow')
+    // the arrow tool's own heads feed what it draws; the line tool's stay put
+    editor.setTool('arrow')
+    editor.setStyle('headStart', 'dot')
+    drag(editor, [[10, 50], [110, 50]])
+    const a = editor.store.shapes().find((x) => x.props.headStart === 'dot')
+    expect(a.type).toBe('arrow')
+    expect(a.props.headEnd).toBe('arrow')
+    editor.setTool('line')
+    expect([editor.styles.headStart, editor.styles.headEnd]).toEqual(['none', 'none'])
+  })
+
   it('shift snaps lines to 15-degree steps', () => {
     editor.setTool('line')
     pid++

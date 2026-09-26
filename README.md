@@ -67,7 +67,8 @@ A simple, joyful drawing experience:
 - **Highlighter** that soaks into the paper (and glows on dark boards)
 - **Shapes** — rectangle, ellipse, triangle, diamond, hexagon, star, cloud — with a
   seeded hand-drawn wobble, four fill styles, and editable labels
-- **Arrows** with draggable bend, lines, text, sticky notes
+- **Arrows and lines** with a draggable bend and a head of your choosing at either end
+  (none, arrow, triangle, dot) — a line is just an arrow with no heads; text, sticky notes
 - **Images** — paste, drag-drop, or pick; auto-downscaled and stored in-document
 - **Laser pointer** for presenting (ephemeral, never saved)
 - **Selection** — click, shift-click, marquee; move, resize, rotate, duplicate,
