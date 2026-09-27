@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  THEMES, themeOf, COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS,
+  fadedTheme, THEMES, themeOf, COLOR_IDS, SIZE_IDS, DASH_IDS, FILL_IDS, GEO_IDS, GRID_IDS,
   SIZES, FONT_SIZES, FONTS,
 } from '../src/palette.js'
 
@@ -70,5 +70,27 @@ describe('fonts', () => {
     for (const m of css.matchAll(/url\('\.\.\/fonts\/([^']+)'\)/g)) expect(existsSync(resolve(here, '../fonts', m[1]))).toBe(true)
     expect(existsSync(resolve(here, '../fonts/LICENSE-ShantellSans.txt'))).toBe(true)
     expect(existsSync(resolve(here, '../fonts/LICENSE-IBMPlex.txt'))).toBe(true)
+  })
+})
+
+describe('fadedTheme', () => {
+  it('drains colour toward the warm tone, keeping each colour\'s own light and dark', () => {
+    const t = THEMES.light
+    expect(fadedTheme(t, 1)).toBe(t)
+    const gone = fadedTheme(t, 0)
+    expect(gone).not.toBe(t)
+    expect(gone.id).toBe('light')
+    const lum = (hex) => { const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255); return 0.3 * r + 0.59 * g + 0.11 * b }
+    // a red stroke ends up warm grey at about the same lightness
+    const red = gone.colors.red.stroke
+    expect(Math.abs(lum(red) - lum(t.colors.red.stroke))).toBeLessThan(0.03)
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(red.slice(i, i + 2), 16))
+    expect(r).toBeGreaterThan(g)
+    expect(g).toBeGreaterThan(b) // warm: red > green > blue
+    expect(r - b).toBeLessThan(90) // but nearly grey
+    // half way is half way, and steps are shared
+    expect(fadedTheme(t, 0.5)).toBe(fadedTheme(t, 0.51))
+    expect(fadedTheme(t, 0.5).colors.blue.stroke).not.toBe(gone.colors.blue.stroke)
+    expect(fadedTheme(t, 0.5).noteText).not.toBe(t.noteText)
   })
 })
