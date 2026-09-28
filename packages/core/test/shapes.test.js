@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
 import {
-  localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, noteLayout, geoLabelLayout, imageFrame, drawShape,
+  localBounds, pageBounds, hitShape, marqueeHits, scaleShape, textLayout, noteLayout, geoLabelLayout, arrowLabelLayout, imageFrame, drawShape,
   runsIn, lineRuns, mapMarks, textLinkAt, urlBadgeAt, markAt, hasMark, setMark, normalizeMarks,
 } from '../src/shapes.js'
 import { Store } from '../src/store.js'
@@ -276,5 +276,28 @@ describe('editing marks', () => {
     expect(m).toEqual([{ from: 0, to: 3, href: 'https://x' }])
     expect(setMark(m, 0, 3, 'href', false)).toEqual([])
     expect(normalizeMarks([{ from: 5, to: 8, b: true }, { from: 0, to: 5, b: true }, { from: 9, to: 9, b: true }])).toEqual([{ from: 0, to: 8, b: true }])
+  })
+})
+
+describe('arrow labels', () => {
+  const arrow = (props = {}) => ({
+    id: 'a1', typeName: 'shape', type: 'arrow', x: 0, y: 0, rot: 0, z: 1,
+    props: { dx: 200, dy: 0, bend: 0, headStart: 'none', headEnd: 'arrow', color: 'black', size: 'm', dash: 'solid', ...props },
+  })
+  it('sits on the middle of the line, and on the middle of the curve when it bends', () => {
+    const l = arrowLabelLayout(arrow({ label: 'yes' }))
+    expect(l.box.x + l.box.w / 2).toBeCloseTo(100)
+    expect(l.box.y + l.box.h / 2).toBeCloseTo(0)
+    const bent = arrowLabelLayout(arrow({ label: 'yes', bend: 40 }))
+    expect(bent.box.y + bent.box.h / 2).toBeCloseTo(40)
+    expect(arrowLabelLayout(arrow())).toBe(null)
+  })
+  it('counts as the arrow when hit, and grows its bounds', () => {
+    const a = arrow({ label: 'a longer caption for the line' })
+    const l = arrowLabelLayout(a)
+    expect(hitShape(a, 100, l.box.y + 2, 1, null)).toBe(true)
+    expect(hitShape(arrow(), 100, l.box.y + 2, 1, null)).toBe(false)
+    expect(localBounds(a).h).toBeGreaterThanOrEqual(l.box.h)
+    expect(localBounds(arrow()).h).toBe(0)
   })
 })
