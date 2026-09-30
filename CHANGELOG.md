@@ -6,6 +6,24 @@ versioned in lockstep.
 
 ## Unreleased
 
+- **GIFs and videos.** An animated GIF plays on the board (decoded here, since
+  a canvas only ever draws a GIF's first frame), and a video (WebM, MP4, MOV)
+  plays muted and looping, both inside an ordinary image shape, so crop,
+  resize, arrows and fading all work on them. They play only while on screen.
+  The context menu pauses either one and turns a video's sound on, for that
+  viewer alone. The asset record gains an optional `mime`. SVG export keeps a
+  video's current frame. `editor.mediaOf(id)`, plus `parseGif` / `GifAnimator`.
+- **Drops take more.** Files of any picture or video type; a picture or video
+  dragged straight out of another page (fetched through the new `fetchMedia`
+  host hook, a CORS fetch by default); a link that isn't one lands as its
+  address, and dragged words as text, all where they're let go. The board
+  outlines itself while something droppable is over it. Hosts can hand drops
+  that land on their own chrome to `importDataTransfer(dt, at)`, and choose
+  what `src` a new asset keeps with the `assetSrc` hook (a data URL by
+  default; an object URL suits a host that uploads). `importImageBlobs` is now
+  `importMediaBlobs` (the old name still works), selects what it placed and
+  resolves with the new ids. A dropped GIF is never re-encoded, whatever its size.
+
 - **Gap snapping.** A dragged box settles into even spacing the way a layout
   tool does: a spacing the board already uses between two neighbours (a
   column picks up a row's spacing as readily as its own, the nearest pair

@@ -2547,3 +2547,40 @@ describe('page-wide zoom keys', () => {
     editor._commitText()
   })
 })
+
+describe('drops', () => {
+  const dt = (data, files = []) => ({ files, types: [...Object.keys(data), ...(files.length ? ['Files'] : [])], getData: (t) => data[t] || '' })
+
+  it('takes files, links, pictures from pages and words; not when read-only', () => {
+    expect(editor.acceptsDrop(dt({ 'text/uri-list': 'https://x.test/a.gif' }))).toBe(true)
+    expect(editor.acceptsDrop(dt({ 'text/plain': 'hello' }))).toBe(true)
+    expect(editor.acceptsDrop(dt({ 'application/x-thing': '1' }))).toBe(false)
+    editor.readonly = true
+    expect(editor.acceptsDrop(dt({ 'text/plain': 'hello' }))).toBe(false)
+    editor.readonly = false
+  })
+
+  it('words land as text where they were let go', async () => {
+    const ids = await editor.importDataTransfer(dt({ 'text/plain': 'dropped words' }), { x: 400, y: 300 })
+    expect(ids.length).toBe(1)
+    const t = editor.store.get(ids[0])
+    expect(t.props.text).toBe('dropped words')
+    const b = pageBounds(t)
+    expect(b.x + b.w / 2).toBeCloseTo(400)
+    expect(b.y + b.h / 2).toBeCloseTo(300)
+  })
+
+  it('a link that is not a picture or video lands as its address', async () => {
+    const asked = []
+    editor.fetchMedia = async (url) => { asked.push(url); return new Blob(['<html>'], { type: 'text/html' }) }
+    const ids = await editor.importDataTransfer(dt({ 'text/uri-list': 'https://site.test/page' }), { x: 0, y: 0 })
+    expect(asked).toEqual(['https://site.test/page'])
+    expect(editor.store.get(ids[0]).props.text).toBe('https://site.test/page')
+  })
+
+  it('a still picture has no player', () => {
+    editor.store.put({ id: 'asset:a', typeName: 'asset', src: 'data:image/png;base64,AAAA', w: 10, h: 10 })
+    editor.store.put({ id: 'i', typeName: 'shape', type: 'image', x: 0, y: 0, rot: 0, z: 1, props: { w: 10, h: 10, assetId: 'asset:a' } })
+    expect(editor.mediaOf('i')).toBeNull()
+  })
+})
